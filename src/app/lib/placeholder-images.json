@@ -1,0 +1,22 @@
+{
+  "placeholderImages": [
+    {
+      "id": "consultant-1",
+      "description": "Professional business person headshot",
+      "imageUrl": "https://picsum.photos/seed/consultant1/200/200",
+      "imageHint": "professional headshot"
+    },
+    {
+      "id": "opportunity-1",
+      "description": "Team meeting in modern office",
+      "imageUrl": "https://picsum.photos/seed/opp1/800/400",
+      "imageHint": "office team"
+    },
+    {
+      "id": "opportunity-2",
+      "description": "Global technology network visualization",
+      "imageUrl": "https://picsum.photos/seed/opp2/800/400",
+      "imageHint": "technology network"
+    }
+  ]
+}
