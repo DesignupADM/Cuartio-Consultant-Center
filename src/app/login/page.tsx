@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState } from "react"
@@ -16,8 +17,10 @@ export default function LoginPage() {
   const handleLogin = (e: React.FormEvent, role: string) => {
     e.preventDefault()
     setIsLoading(true)
+    // In a real app, this would perform authentication
+    // We pass the role in the URL so the dashboard knows which layout to show
     setTimeout(() => {
-      router.push("/dashboard")
+      router.push(`/dashboard?role=${role}`)
       setIsLoading(false)
     }, 1000)
   }
@@ -53,11 +56,11 @@ export default function LoginPage() {
                 <form onSubmit={(e) => handleLogin(e, "consultant")} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" placeholder="name@example.com" required />
+                    <Input id="email" type="email" placeholder="consultant@example.com" defaultValue="consultant@example.com" required />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="password">Password</Label>
-                    <Input id="password" type="password" required />
+                    <Input id="password" type="password" defaultValue="password" required />
                   </div>
                   <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={isLoading}>
                     {isLoading ? "Signing in..." : "Sign in as Consultant"}
@@ -69,11 +72,11 @@ export default function LoginPage() {
                 <form onSubmit={(e) => handleLogin(e, "admin")} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="admin-email">Admin ID or Email</Label>
-                    <Input id="admin-email" type="text" placeholder="admin@connectflow.pro" required />
+                    <Input id="admin-email" type="text" placeholder="admin@connectflow.pro" defaultValue="admin@connectflow.pro" required />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="admin-password">Password</Label>
-                    <Input id="admin-password" type="password" required />
+                    <Input id="admin-password" type="password" defaultValue="password" required />
                   </div>
                   <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={isLoading}>
                     {isLoading ? "Verifying..." : "Sign in as Admin"}

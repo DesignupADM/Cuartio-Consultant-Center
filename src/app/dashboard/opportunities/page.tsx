@@ -1,11 +1,15 @@
+
 "use client"
 
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Globe, MapPin, Calendar, ArrowRight } from "lucide-react"
+import { Globe, MapPin, Calendar, ArrowRight, Info } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 
 const opportunities = [
   {
@@ -51,6 +55,9 @@ const opportunities = [
 ]
 
 export default function OpportunitiesPage() {
+  const searchParams = useSearchParams()
+  const role = (searchParams.get("role") as "admin" | "consultant") || "admin"
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -73,6 +80,19 @@ export default function OpportunitiesPage() {
             </Select>
           </div>
         </div>
+
+        {role === "consultant" && (
+          <Alert className="bg-primary/5 border-primary/20">
+            <Info className="h-4 w-4 text-primary" />
+            <AlertTitle className="text-primary font-bold">Improve your match rate</AlertTitle>
+            <AlertDescription className="flex items-center justify-between">
+              <span>Complete your technical skills and sector experience in your profile to see more relevant projects.</span>
+              <Button variant="link" size="sm" asChild className="text-primary font-bold">
+                <Link href={`/dashboard/profile?role=${role}`}>Update Profile</Link>
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="grid gap-6 md:grid-cols-2">
           {opportunities.map((opp) => (

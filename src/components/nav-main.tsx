@@ -1,7 +1,8 @@
+
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useSearchParams } from "next/navigation"
 import { 
   Briefcase, 
   Database, 
@@ -60,29 +61,37 @@ const items = [
 
 export function NavMain({ role = "admin" }: { role?: "admin" | "consultant" }) {
   const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const currentRole = role || searchParams.get("role") || "admin"
 
   const filteredItems = items.filter(
-    (item) => item.role === "all" || item.role === role
+    (item) => item.role === "all" || item.role === currentRole
   )
 
   return (
     <SidebarGroup>
       <SidebarGroupLabel>Application</SidebarGroupLabel>
       <SidebarMenu>
-        {filteredItems.map((item) => (
-          <SidebarMenuItem key={item.title}>
-            <SidebarMenuButton
-              asChild
-              isActive={pathname === item.url}
-              tooltip={item.title}
-            >
-              <Link href={item.url}>
-                <item.icon />
-                <span>{item.title}</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        ))}
+        {filteredItems.map((item) => {
+          const isActive = pathname === item.url
+          // Maintain role parameter in navigation for prototype flow
+          const navUrl = `${item.url}?role=${currentRole}`
+          
+          return (
+            <SidebarMenuItem key={item.title}>
+              <SidebarMenuButton
+                asChild
+                isActive={isActive}
+                tooltip={item.title}
+              >
+                <Link href={navUrl}>
+                  <item.icon />
+                  <span>{item.title}</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )
+        })}
       </SidebarMenu>
     </SidebarGroup>
   )

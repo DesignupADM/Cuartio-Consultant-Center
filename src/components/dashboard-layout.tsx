@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -23,19 +24,24 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 
 export function DashboardLayout({
   children,
-  role = "admin"
+  role: roleProp
 }: {
   children: React.ReactNode
   role?: "admin" | "consultant"
 }) {
+  const searchParams = useSearchParams()
+  // Determine role from prop or URL search param for prototype connectivity
+  const role = roleProp || (searchParams.get("role") as "admin" | "consultant") || "admin"
+
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon">
         <SidebarHeader className="h-16 flex items-center justify-center border-b px-6">
-          <Link href="/dashboard" className="flex items-center gap-2 font-headline font-bold text-primary group-data-[collapsible=icon]:hidden">
+          <Link href={`/dashboard?role=${role}`} className="flex items-center gap-2 font-headline font-bold text-primary group-data-[collapsible=icon]:hidden">
             <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center text-primary-foreground">
               <span className="text-lg">C</span>
             </div>
@@ -51,15 +57,17 @@ export function DashboardLayout({
         <SidebarFooter className="border-t p-4">
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton size="lg">
-                <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src="https://picsum.photos/seed/user/40/40" />
-                  <AvatarFallback className="rounded-lg">JD</AvatarFallback>
-                </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
-                  <span className="truncate font-semibold">John Doe</span>
-                  <span className="truncate text-xs text-muted-foreground">{role === "admin" ? "Administrator" : "Consultant"}</span>
-                </div>
+              <SidebarMenuButton size="lg" asChild>
+                <Link href={`/dashboard/profile?role=${role}`}>
+                  <Avatar className="h-8 w-8 rounded-lg">
+                    <AvatarImage src="https://picsum.photos/seed/user/40/40" />
+                    <AvatarFallback className="rounded-lg">JD</AvatarFallback>
+                  </Avatar>
+                  <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden">
+                    <span className="truncate font-semibold">John Doe</span>
+                    <span className="truncate text-xs text-muted-foreground">{role === "admin" ? "Administrator" : "Consultant"}</span>
+                  </div>
+                </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
@@ -81,15 +89,17 @@ export function DashboardLayout({
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="Search consultants..."
+                placeholder="Search consultants or projects..."
                 className="w-full bg-muted/50 pl-8 focus-visible:ring-primary"
               />
             </div>
           </div>
           <div className="ml-auto flex items-center gap-4">
-             <Button variant="ghost" size="icon" className="relative">
-                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-accent" />
-                <UserIcon className="h-5 w-5" />
+             <Button variant="ghost" size="icon" className="relative" asChild>
+                <Link href={`/dashboard/profile?role=${role}`}>
+                  <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-accent" />
+                  <UserIcon className="h-5 w-5" />
+                </Link>
              </Button>
           </div>
         </header>
