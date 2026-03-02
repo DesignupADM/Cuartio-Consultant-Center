@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 
-export function DashboardLayout({
+function DashboardShell({
   children,
   role: roleProp
 }: {
@@ -34,7 +34,6 @@ export function DashboardLayout({
   role?: "admin" | "consultant"
 }) {
   const searchParams = useSearchParams()
-  // Determine role from prop or URL search param for prototype connectivity
   const role = roleProp || (searchParams.get("role") as "admin" | "consultant") || "admin"
 
   return (
@@ -108,5 +107,16 @@ export function DashboardLayout({
         </main>
       </SidebarInset>
     </SidebarProvider>
+  )
+}
+
+export function DashboardLayout(props: {
+  children: React.ReactNode
+  role?: "admin" | "consultant"
+}) {
+  return (
+    <React.Suspense fallback={<div className="flex h-screen items-center justify-center">Loading...</div>}>
+      <DashboardShell {...props} />
+    </React.Suspense>
   )
 }

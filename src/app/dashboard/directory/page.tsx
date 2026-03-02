@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, Suspense } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { 
   Table, 
@@ -21,8 +21,8 @@ import {
   CheckCircle2,
   Mail,
   Phone,
-  Globe2,
-  BriefcaseIcon,
+  Globe,
+  Briefcase,
   User,
   CalendarDays
 } from "lucide-react"
@@ -32,7 +32,8 @@ import {
   SheetContent, 
   SheetHeader, 
   SheetTitle, 
-  SheetFooter
+  SheetFooter,
+  SheetTrigger
 } from "@/components/ui/sheet"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -52,6 +53,14 @@ const consultants = [
 ]
 
 export default function DirectoryPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading Directory...</div>}>
+      <DirectoryContent />
+    </Suspense>
+  )
+}
+
+function DirectoryContent() {
   const [searchQuery, setSearchQuery] = useState("")
   const [isInsightLoading, setIsInsightLoading] = useState(false)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
@@ -240,7 +249,6 @@ export default function DirectoryPage() {
           </Table>
         </div>
 
-        {/* Detailed Information Sheet */}
         <Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
           <SheetContent side="right" className="sm:max-w-2xl overflow-y-auto">
             {activeConsultant && (
@@ -267,11 +275,11 @@ export default function DirectoryPage() {
                     <p className="font-medium">{activeConsultant.phone}</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-muted-foreground flex items-center gap-2"><Globe2 className="h-3.5 w-3.5" /> Country</p>
+                    <p className="text-muted-foreground flex items-center gap-2"><Globe className="h-3.5 w-3.5" /> Country</p>
                     <p className="font-medium">{activeConsultant.country}</p>
                   </div>
                   <div className="space-y-1">
-                    <p className="text-muted-foreground flex items-center gap-2"><BriefcaseIcon className="h-3.5 w-3.5" /> Experience</p>
+                    <p className="text-muted-foreground flex items-center gap-2"><Briefcase className="h-3.5 w-3.5" /> Experience</p>
                     <p className="font-medium">{activeConsultant.years} Years</p>
                   </div>
                   <div className="space-y-1">
