@@ -24,7 +24,9 @@ import {
   Globe,
   Briefcase,
   User,
-  CalendarDays
+  CalendarDays,
+  Settings2,
+  ChevronDown
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { 
@@ -37,6 +39,14 @@ import {
 } from "@/components/ui/sheet"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { 
+  DropdownMenu, 
+  DropdownMenuCheckboxItem, 
+  DropdownMenuContent, 
+  DropdownMenuLabel, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu"
 import { adminCvInsightExtraction } from "@/ai/flows/admin-cv-insight-extraction"
 import { useToast } from "@/hooks/use-toast"
 import { Separator } from "@/components/ui/separator"
@@ -51,6 +61,8 @@ const consultants = [
   { id: 7, firstName: "Guillaume", lastName: "Dubois", email: "g.dubois@example.fr", phone: "+33 1 12 34 56 78", lastUpdate: "2024-02-15", country: "France", years: 4, profession: "Climate Specialist", sector: "Sustainability", language: "French", bio: "Focusing on carbon footprint reduction strategies for multinational industrial corporations." },
   { id: 8, firstName: "Hana", lastName: "Tanaka", email: "h.tanaka@example.jp", phone: "+81 3 1234 5678", lastUpdate: "2024-02-10", country: "Japan", years: 9, profession: "Supply Chain Manager", sector: "Logistics", language: "Japanese", bio: "Specialist in lean manufacturing and global logistics resilience during supply chain disruptions." },
 ]
+
+type ColumnKey = "consultant" | "profession" | "country" | "lastUpdate" | "years" | "phone" | "sector" | "language" | "cv";
 
 export default function DirectoryPage() {
   return (
@@ -67,9 +79,26 @@ function DirectoryContent() {
   const [activeConsultant, setActiveConsultant] = useState<any>(null)
   const { toast } = useToast()
 
+  // Column visibility state
+  const [visibleColumns, setVisibleColumns] = useState<Record<ColumnKey, boolean>>({
+    consultant: true,
+    profession: true,
+    country: true,
+    lastUpdate: true,
+    years: false,
+    phone: false,
+    sector: false,
+    language: false,
+    cv: true,
+  })
+
+  const toggleColumn = (column: ColumnKey) => {
+    setVisibleColumns(prev => ({ ...prev, [column]: !prev[column] }))
+  }
+
   const filteredConsultants = useMemo(() => {
     return consultants.filter(c => 
-      `${c.firstName} ${c.lastName} ${c.profession} ${c.country}`.toLowerCase().includes(searchQuery.toLowerCase())
+      `${c.firstName} ${c.lastName} ${c.profession} ${c.country} ${c.sector}`.toLowerCase().includes(searchQuery.toLowerCase())
     )
   }, [searchQuery])
 
@@ -98,7 +127,6 @@ function DirectoryContent() {
     setIsInsightLoading(true)
     
     try {
-      // Mock CV data for AI extraction
       const result = await adminCvInsightExtraction({
         cvDataUri: "data:application/pdf;base64,JVBERi0xLjQKJ..." 
       })
@@ -122,22 +150,46 @@ function DirectoryContent() {
             <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Consultant Directory</h1>
             <p className="text-muted-foreground">Detailed database of global experts and consultants.</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Settings2 className="mr-2 h-4 w-4" />
+                  Columns
+                  <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel>Toggle Columns</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem checked={visibleColumns.consultant} onCheckedChange={() => toggleColumn("consultant")}>Consultant</DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={visibleColumns.profession} onCheckedChange={() => toggleColumn("profession")}>Profession</DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={visibleColumns.country} onCheckedChange={() => toggleColumn("country")}>Country</DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={visibleColumns.lastUpdate} onCheckedChange={() => toggleColumn("lastUpdate")}>Last Update</DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={visibleColumns.phone} onCheckedChange={() => toggleColumn("phone")}>Phone</DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={visibleColumns.years} onCheckedChange={() => toggleColumn("years")}>Experience</DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={visibleColumns.sector} onCheckedChange={() => toggleColumn("sector")}>Sector</DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={visibleColumns.language} onCheckedChange={() => toggleColumn("language")}>Language</DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem checked={visibleColumns.cv} onCheckedChange={() => toggleColumn("cv")}>CV Action</DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Button variant="outline" onClick={handleExport}>
               <Download className="mr-2 h-4 w-4" />
-              Export to Excel
+              Export
             </Button>
+            
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="outline" className="relative">
                   <Filter className="mr-2 h-4 w-4" />
-                  Advanced Filters
+                  Filters
                   <Badge className="ml-2 bg-accent text-accent-foreground">3</Badge>
                 </Button>
               </SheetTrigger>
               <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
                 <SheetHeader>
-                  <SheetTitle>Filters</SheetTitle>
+                  <SheetTitle>Advanced Filters</SheetTitle>
                 </SheetHeader>
                 <div className="grid gap-6 py-6">
                   <div className="space-y-4">
@@ -191,7 +243,7 @@ function DirectoryContent() {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
             <Input 
-              placeholder="Search by name, country, or profession..." 
+              placeholder="Search by name, country, sector or profession..." 
               className="pl-9 bg-muted/20"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -206,11 +258,15 @@ function DirectoryContent() {
           <Table>
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead>Consultant</TableHead>
-                <TableHead>Profession</TableHead>
-                <TableHead>Country</TableHead>
-                <TableHead>Last Update</TableHead>
-                <TableHead className="text-right">CV</TableHead>
+                {visibleColumns.consultant && <TableHead>Consultant</TableHead>}
+                {visibleColumns.profession && <TableHead>Profession</TableHead>}
+                {visibleColumns.country && <TableHead>Country</TableHead>}
+                {visibleColumns.phone && <TableHead>Phone</TableHead>}
+                {visibleColumns.years && <TableHead>Experience</TableHead>}
+                {visibleColumns.sector && <TableHead>Sector</TableHead>}
+                {visibleColumns.language && <TableHead>Language</TableHead>}
+                {visibleColumns.lastUpdate && <TableHead>Last Update</TableHead>}
+                {visibleColumns.cv && <TableHead className="text-right">CV</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -220,29 +276,39 @@ function DirectoryContent() {
                   className="hover:bg-muted/30 transition-colors cursor-pointer group"
                   onClick={() => handleRowClick(consultant)}
                 >
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-semibold group-hover:text-primary transition-colors">
-                        {consultant.firstName} {consultant.lastName}
-                      </span>
-                      <span className="text-xs text-muted-foreground">{consultant.email}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">{consultant.profession}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="font-normal">{consultant.country}</Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{consultant.lastUpdate}</TableCell>
-                  <TableCell className="text-right">
-                    <Button 
-                      size="icon" 
-                      variant="ghost" 
-                      onClick={(e) => handleOpenCV(consultant.id, e)}
-                      className="h-8 w-8"
-                    >
-                      <FileText className="h-4 w-4 text-primary" />
-                    </Button>
-                  </TableCell>
+                  {visibleColumns.consultant && (
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-semibold group-hover:text-primary transition-colors">
+                          {consultant.firstName} {consultant.lastName}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{consultant.email}</span>
+                      </div>
+                    </TableCell>
+                  )}
+                  {visibleColumns.profession && <TableCell className="text-muted-foreground">{consultant.profession}</TableCell>}
+                  {visibleColumns.country && (
+                    <TableCell>
+                      <Badge variant="outline" className="font-normal">{consultant.country}</Badge>
+                    </TableCell>
+                  )}
+                  {visibleColumns.phone && <TableCell className="text-xs">{consultant.phone}</TableCell>}
+                  {visibleColumns.years && <TableCell className="text-xs">{consultant.years} yrs</TableCell>}
+                  {visibleColumns.sector && <TableCell className="text-xs">{consultant.sector}</TableCell>}
+                  {visibleColumns.language && <TableCell className="text-xs">{consultant.language}</TableCell>}
+                  {visibleColumns.lastUpdate && <TableCell className="text-xs text-muted-foreground">{consultant.lastUpdate}</TableCell>}
+                  {visibleColumns.cv && (
+                    <TableCell className="text-right">
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        onClick={(e) => handleOpenCV(consultant.id, e)}
+                        className="h-8 w-8"
+                      >
+                        <FileText className="h-4 w-4 text-primary" />
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>
