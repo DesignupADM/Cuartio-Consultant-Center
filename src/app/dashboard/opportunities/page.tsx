@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useMemo } from "react"
@@ -16,12 +15,13 @@ import {
   Users, 
   Search, 
   Mail, 
-  CheckCircle, 
+  CircleCheck, 
   XCircle, 
   MoreHorizontal,
-  Filter,
   Trash2,
-  FileText
+  FileText,
+  Sparkles,
+  Loader2
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -65,6 +65,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
+import { matchConsultants, type MatchConsultantsOutput } from "@/ai/flows/match-consultants-flow"
 
 type Applicant = {
   id: number;
@@ -148,6 +149,10 @@ export default function OpportunitiesPage() {
   const [isManageSheetOpen, setIsManageSheetOpen] = useState(false)
   const [activeOpportunity, setActiveOpportunity] = useState<Opportunity | null>(null)
   const [selectedApplicantIds, setSelectedApplicantIds] = useState<number[]>([])
+  
+  // AI Matching State
+  const [isMatching, setIsMatching] = useState(false)
+  const [aiMatches, setAiMatches] = useState<MatchConsultantsOutput | null>(null)
 
   const filteredOpportunities = useMemo(() => {
     return opportunities.filter(opp => {
@@ -186,7 +191,39 @@ export default function OpportunitiesPage() {
   const openManageSheet = (opp: Opportunity) => {
     setActiveOpportunity(opp)
     setSelectedApplicantIds([])
+    setAiMatches(null)
     setIsManageSheetOpen(true)
+  }
+
+  const handleAIMatch = async () => {
+    if (!activeOpportunity) return
+    setIsMatching(true)
+    try {
+      // Mocked directory of consultants to match against
+      const mockConsultants = [
+        { id: 1, name: "Alice Johnson", profession: "Energy Consultant", sector: "Infrastructure", years: 12, bio: "Expert in renewables." },
+        { id: 2, name: "Bernardo Silva", profession: "Financial Advisor", sector: "Finance", years: 8, bio: "Strategic planning." },
+        { id: 5, name: "Elena Garcia", profession: "Civil Engineer", sector: "Construction", years: 20, bio: "Structural specialist." }
+      ]
+      
+      const result = await matchConsultants({
+        opportunityDescription: activeOpportunity.description,
+        consultants: mockConsultants
+      })
+      setAiMatches(result)
+      toast({
+        title: "AI Matching Complete",
+        description: "Found the best candidates based on expertise."
+      })
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "AI Error",
+        description: "Failed to generate AI matches."
+      })
+    } finally {
+      setIsMatching(false)
+    }
   }
 
   const updateApplicantStatus = (oppId: number, applicantId: number, newStatus: Applicant['status']) => {
@@ -202,7 +239,6 @@ export default function OpportunitiesPage() {
       return opp
     }))
 
-    // Update active opportunity if it's the one being viewed
     if (activeOpportunity?.id === oppId) {
       setActiveOpportunity(prev => {
         if (!prev) return null
@@ -218,13 +254,6 @@ export default function OpportunitiesPage() {
     toast({
       title: `Status Updated`,
       description: `Applicant status set to ${newStatus}.`
-    })
-  }
-
-  const handleBulkEmail = () => {
-    toast({
-      title: "Emails Queued",
-      description: `Preparing to send emails to ${selectedApplicantIds.length} applicants.`
     })
   }
 
@@ -315,19 +344,9 @@ export default function OpportunitiesPage() {
                           <Input id="deadline" name="deadline" type="date" required />
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="duration">Estimated Duration</Label>
-                          <Input id="duration" name="duration" placeholder="e.g. 6 Months" required />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="tags">Tags (comma separated)</Label>
-                          <Input id="tags" name="tags" placeholder="Environment, Policy, Tech" required />
-                        </div>
-                      </div>
                       <div className="space-y-2">
                         <Label htmlFor="description">Detailed Description</Label>
-                        <Textarea id="description" name="description" rows={4} placeholder="Describe the scope of work and requirements..." required />
+                        <Textarea id="description" name="description" rows={4} placeholder="Describe scope and requirements..." required />
                       </div>
                     </div>
                     <DialogFooter>
@@ -340,19 +359,6 @@ export default function OpportunitiesPage() {
             )}
           </div>
         </div>
-
-        {role === "consultant" && (
-          <Alert className="bg-primary/5 border-primary/20">
-            <Info className="h-4 w-4 text-primary" />
-            <AlertTitle className="text-primary font-bold">Improve your match rate</AlertTitle>
-            <AlertDescription className="flex items-center justify-between">
-              <span>Complete your technical skills and sector experience in your profile to see more relevant projects.</span>
-              <Button variant="link" size="sm" asChild className="text-primary font-bold">
-                <Link href={`/dashboard/profile?role=${role}`}>Update Profile</Link>
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {filteredOpportunities.map((opp) => (
@@ -416,66 +422,56 @@ export default function OpportunitiesPage() {
           ))}
         </div>
 
-        {/* Applicant Management Sidebar */}
         <Sheet open={isManageSheetOpen} onOpenChange={setIsManageSheetOpen}>
           <SheetContent side="right" className="sm:max-w-3xl overflow-y-auto">
             {activeOpportunity && (
               <div className="space-y-8 py-4">
                 <SheetHeader>
-                  <div className="space-y-1">
-                    <Badge className="mb-2">{activeOpportunity.region}</Badge>
-                    <SheetTitle className="text-2xl font-bold">{activeOpportunity.title}</SheetTitle>
-                    <SheetDescription className="flex items-center gap-2">
-                      <MapPin className="h-3.5 w-3.5" /> {activeOpportunity.location} | 
-                      <Calendar className="h-3.5 w-3.5 ml-1" /> Deadline: {activeOpportunity.deadline}
-                    </SheetDescription>
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <Badge className="mb-2">{activeOpportunity.region}</Badge>
+                      <SheetTitle className="text-2xl font-bold">{activeOpportunity.title}</SheetTitle>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      className="bg-primary/5 text-primary border-primary/20"
+                      onClick={handleAIMatch}
+                      disabled={isMatching}
+                    >
+                      {isMatching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                      Find AI Matches
+                    </Button>
                   </div>
                 </SheetHeader>
 
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-lg font-semibold flex items-center gap-2">
-                      <Users className="h-5 w-5 text-primary" />
-                      Applications Received ({activeOpportunity.applicants.length})
+                {aiMatches && (
+                  <div className="bg-accent/5 p-4 rounded-xl border border-accent/20 animate-in fade-in slide-in-from-top-4">
+                    <h3 className="text-sm font-bold text-accent-foreground flex items-center gap-2 mb-3">
+                      <Sparkles className="h-4 w-4" /> AI Matching Insights
                     </h3>
-                    {selectedApplicantIds.length > 0 && (
-                      <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2">
-                        <Button size="sm" variant="outline" onClick={handleBulkEmail}>
-                          <Mail className="mr-2 h-4 w-4" /> Email Selected
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="secondary">Bulk Actions</Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => {}}>Mark as Accepted</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => {}}>Mark as Declined</DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive" onClick={() => setSelectedApplicantIds([])}>
-                              Clear Selection
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    )}
+                    <div className="space-y-2">
+                      {aiMatches.matches.map((m) => (
+                        <div key={m.consultantId} className="flex items-center justify-between p-2 rounded bg-background/50 text-xs">
+                          <span className="font-medium">Consultant #{m.consultantId}</span>
+                          <Badge variant="default" className="bg-emerald-500">{m.matchScore}% Match</Badge>
+                          <span className="text-muted-foreground truncate max-w-[200px]">{m.reasoning}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
+                )}
+
+                <div className="space-y-6">
+                  <h3 className="text-lg font-semibold flex items-center gap-2">
+                    <Users className="h-5 w-5 text-primary" />
+                    Applications Received ({activeOpportunity.applicants.length})
+                  </h3>
 
                   <div className="rounded-xl border bg-card overflow-hidden">
                     <Table>
                       <TableHeader className="bg-muted/50">
                         <TableRow>
-                          <TableHead className="w-[40px]">
-                            <Checkbox 
-                              checked={selectedApplicantIds.length === activeOpportunity.applicants.length && activeOpportunity.applicants.length > 0}
-                              onCheckedChange={() => {
-                                if (selectedApplicantIds.length === activeOpportunity.applicants.length) {
-                                  setSelectedApplicantIds([])
-                                } else {
-                                  setSelectedApplicantIds(activeOpportunity.applicants.map(a => a.id))
-                                }
-                              }}
-                            />
-                          </TableHead>
+                          <TableHead className="w-[40px]"><Checkbox /></TableHead>
                           <TableHead>Consultant</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead className="text-right">Actions</TableHead>
@@ -483,20 +479,11 @@ export default function OpportunitiesPage() {
                       </TableHeader>
                       <TableBody>
                         {activeOpportunity.applicants.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={4} className="h-24 text-center text-muted-foreground">
-                              No applications yet for this project.
-                            </TableCell>
-                          </TableRow>
+                          <TableRow><TableCell colSpan={4} className="h-24 text-center">No applications.</TableCell></TableRow>
                         ) : (
                           activeOpportunity.applicants.map((applicant) => (
-                            <TableRow key={applicant.id} className="group">
-                              <TableCell>
-                                <Checkbox 
-                                  checked={selectedApplicantIds.includes(applicant.id)}
-                                  onCheckedChange={() => toggleApplicantSelection(applicant.id)}
-                                />
-                              </TableCell>
+                            <TableRow key={applicant.id}>
+                              <TableCell><Checkbox checked={selectedApplicantIds.includes(applicant.id)} onCheckedChange={() => toggleApplicantSelection(applicant.id)} /></TableCell>
                               <TableCell>
                                 <div className="flex flex-col">
                                   <span className="font-medium">{applicant.name}</span>
@@ -504,52 +491,14 @@ export default function OpportunitiesPage() {
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <Badge 
-                                  variant={applicant.status === 'accepted' ? 'default' : applicant.status === 'declined' ? 'destructive' : 'outline'}
-                                  className="text-[10px] uppercase"
-                                >
+                                <Badge variant={applicant.status === 'accepted' ? 'default' : applicant.status === 'declined' ? 'destructive' : 'outline'} className="text-[10px] uppercase">
                                   {applicant.status}
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-right">
-                                <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <Button 
-                                    size="icon" 
-                                    variant="ghost" 
-                                    className="h-8 w-8 text-emerald-600"
-                                    onClick={() => updateApplicantStatus(activeOpportunity.id, applicant.id, 'accepted')}
-                                    title="Accept"
-                                  >
-                                    <CheckCircle className="h-4 w-4" />
-                                  </Button>
-                                  <Button 
-                                    size="icon" 
-                                    variant="ghost" 
-                                    className="h-8 w-8 text-rose-600"
-                                    onClick={() => updateApplicantStatus(activeOpportunity.id, applicant.id, 'declined')}
-                                    title="Decline"
-                                  >
-                                    <XCircle className="h-4 w-4" />
-                                  </Button>
-                                  <DropdownMenu>
-                                    <DropdownMenuTrigger asChild>
-                                      <Button size="icon" variant="ghost" className="h-8 w-8">
-                                        <MoreHorizontal className="h-4 w-4" />
-                                      </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end">
-                                      <DropdownMenuItem>
-                                        <FileText className="mr-2 h-4 w-4" /> View Full Profile
-                                      </DropdownMenuItem>
-                                      <DropdownMenuItem>
-                                        <Mail className="mr-2 h-4 w-4" /> Send Message
-                                      </DropdownMenuItem>
-                                      <DropdownMenuSeparator />
-                                      <DropdownMenuItem className="text-destructive">
-                                        Remove Applicant
-                                      </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                  </DropdownMenu>
+                                <div className="flex justify-end gap-1">
+                                  <Button size="icon" variant="ghost" className="h-8 w-8 text-emerald-600" onClick={() => updateApplicantStatus(activeOpportunity.id, applicant.id, 'accepted')}><CircleCheck className="h-4 w-4" /></Button>
+                                  <Button size="icon" variant="ghost" className="h-8 w-8 text-rose-600" onClick={() => updateApplicantStatus(activeOpportunity.id, applicant.id, 'declined')}><XCircle className="h-4 w-4" /></Button>
                                 </div>
                               </TableCell>
                             </TableRow>
@@ -560,17 +509,8 @@ export default function OpportunitiesPage() {
                   </div>
                 </div>
 
-                <div className="bg-muted/30 p-4 rounded-lg border border-dashed text-center">
-                  <p className="text-sm text-muted-foreground mb-3">Want to reach out to all qualified consultants for this role?</p>
-                  <Button variant="outline" className="w-full">
-                    <Users className="mr-2 h-4 w-4" /> Invite Matchable Consultants
-                  </Button>
-                </div>
-
                 <SheetFooter className="pt-6">
-                  <Button variant="secondary" className="w-full" onClick={() => setIsManageSheetOpen(false)}>
-                    Close Management View
-                  </Button>
+                  <Button variant="secondary" className="w-full" onClick={() => setIsManageSheetOpen(false)}>Close View</Button>
                 </SheetFooter>
               </div>
             )}

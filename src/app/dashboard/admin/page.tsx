@@ -1,10 +1,13 @@
 "use client"
 
+import { useState } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
+import { useToast } from "@/hooks/use-toast"
 import { 
   Settings, 
   Users, 
@@ -12,7 +15,9 @@ import {
   ShieldCheck, 
   Trash2, 
   SquarePen,
-  Plus
+  Plus,
+  Save,
+  Database
 } from "lucide-react"
 
 const accounts = [
@@ -21,13 +26,21 @@ const accounts = [
   { id: 3, name: "Mike Ross", email: "mike@connectflow.pro", role: "Editor", status: "Inactive" },
 ]
 
-const questions = [
-  { id: 1, category: "General", text: "Country of Residence", type: "Dropdown" },
-  { id: 2, category: "Experience", text: "Sectors of Expertise", type: "Multi-select" },
-  { id: 3, category: "Languages", text: "Native Language", type: "Searchable Dropdown" },
-]
-
 export default function AdminPanelPage() {
+  const { toast } = useToast()
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleSaveSettings = () => {
+    setIsSaving(true)
+    setTimeout(() => {
+      setIsSaving(false)
+      toast({
+        title: "Configuration Saved",
+        description: "System-wide settings have been updated successfully."
+      })
+    }, 1000)
+  }
+
   return (
     <DashboardLayout role="admin">
       <div className="space-y-6">
@@ -36,8 +49,8 @@ export default function AdminPanelPage() {
           <p className="text-muted-foreground">Configure system-wide settings and manage administrative accounts.</p>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card>
+        <div className="grid gap-6 lg:grid-cols-3">
+          <Card className="lg:col-span-2">
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
@@ -77,34 +90,22 @@ export default function AdminPanelPage() {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <CircleHelp className="h-5 w-5 text-primary" />
-                  Application Questions
-                </CardTitle>
-                <CardDescription>Modify the questions consultants answer during registration.</CardDescription>
-              </div>
-              <Button variant="outline" size="sm">
-                Rearrange
-              </Button>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5 text-primary" />
+                Data Controls
+              </CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {questions.map((q) => (
-                  <div key={q.id} className="flex items-center justify-between p-3 rounded-lg border hover:border-primary/50 transition-colors group">
-                    <div>
-                      <Badge variant="secondary" className="text-[9px] mb-1">{q.category}</Badge>
-                      <p className="text-sm font-medium">{q.text}</p>
-                      <p className="text-[10px] text-muted-foreground">Type: {q.type}</p>
-                    </div>
-                    <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <SquarePen className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-                <Button variant="link" className="w-full text-xs text-muted-foreground">View all 24 questions</Button>
-              </div>
+            <CardContent className="space-y-4">
+              <Button variant="outline" className="w-full justify-start">
+                Backup Database Now
+              </Button>
+              <Button variant="outline" className="w-full justify-start">
+                Export Audit Logs (JSON)
+              </Button>
+              <Button variant="outline" className="w-full justify-start text-destructive hover:text-destructive">
+                Purge Inactive Accounts
+              </Button>
             </CardContent>
           </Card>
         </div>
@@ -116,35 +117,46 @@ export default function AdminPanelPage() {
               General System Configuration
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-6">
-             <div className="grid md:grid-cols-2 gap-8">
-                <div className="space-y-4">
-                   <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium">Auto-send updates reminder</label>
-                      <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" defaultChecked />
+          <CardContent className="space-y-8">
+             <div className="grid md:grid-cols-2 gap-12">
+                <div className="space-y-6">
+                   <div className="flex items-center justify-between space-x-2">
+                      <div className="flex flex-col space-y-1">
+                        <Label>AI CV Extraction</Label>
+                        <span className="text-xs text-muted-foreground">Automatically process CVs upon upload.</span>
+                      </div>
+                      <Switch defaultChecked />
                    </div>
-                   <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium">Public registration enabled</label>
-                      <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" defaultChecked />
+                   <div className="flex items-center justify-between space-x-2">
+                      <div className="flex flex-col space-y-1">
+                        <Label>Public Registration</Label>
+                        <span className="text-xs text-muted-foreground">Allow new consultants to register via homepage.</span>
+                      </div>
+                      <Switch defaultChecked />
                    </div>
-                   <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium">AI CV Extraction (Experimental)</label>
-                      <input type="checkbox" className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary" defaultChecked />
+                   <div className="flex items-center justify-between space-x-2">
+                      <div className="flex flex-col space-y-1">
+                        <Label>Email Notifications</Label>
+                        <span className="text-xs text-muted-foreground">Send system updates and match alerts via email.</span>
+                      </div>
+                      <Switch defaultChecked />
                    </div>
                 </div>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Support Email</label>
-                    <Input defaultValue="support@connectflow.pro" />
+                    <Label htmlFor="support-email">Support Email</Label>
+                    <Input id="support-email" defaultValue="support@connectflow.pro" />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Database Export Limit</label>
-                    <Input type="number" defaultValue="5000" />
+                    <Label htmlFor="db-limit">Database Export Limit</Label>
+                    <Input id="db-limit" type="number" defaultValue="5000" />
                   </div>
                 </div>
              </div>
-             <div className="flex justify-end pt-4">
-                <Button className="bg-primary">Save System Settings</Button>
+             <div className="flex justify-end pt-4 border-t">
+                <Button className="bg-primary min-w-[150px]" onClick={handleSaveSettings} disabled={isSaving}>
+                  {isSaving ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> Save All Settings</>}
+                </Button>
              </div>
           </CardContent>
         </Card>
