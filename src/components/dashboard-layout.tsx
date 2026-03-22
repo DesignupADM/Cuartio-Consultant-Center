@@ -7,7 +7,8 @@ import {
   Search, 
   User as UserIcon,
   Bell,
-  Settings
+  Settings,
+  Loader2
 } from "lucide-react"
 import {
   Sidebar,
