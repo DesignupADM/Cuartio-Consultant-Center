@@ -16,7 +16,6 @@ import {
   Search, 
   CircleCheck, 
   XCircle, 
-  Trash2,
   Sparkles,
   Loader2,
   ChevronLeft,
@@ -24,11 +23,12 @@ import {
   UserCheck,
   UserX,
   Clock,
-  LayoutDashboard,
-  Filter,
-  MoreVertical,
   ExternalLink,
-  Share2
+  Share2,
+  LayoutGrid,
+  Table as TableIcon,
+  ChevronRight,
+  User as UserIcon
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
@@ -53,10 +53,9 @@ import {
 } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
-import { useSearchParams, useRouter } from "next/navigation"
+import { useSearchParams } from "next/navigation"
 import { matchConsultants, type MatchConsultantsOutput } from "@/ai/flows/match-consultants-flow"
-import { Separator } from "@/components/ui/separator"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 type Applicant = {
   id: number;
@@ -95,6 +94,7 @@ const initialOpportunities: Opportunity[] = [
       { id: 101, name: "Alice Johnson", email: "alice.j@example.com", status: 'applied', appliedDate: "2024-03-15", location: "UK" },
       { id: 102, name: "Bernardo Silva", email: "b.silva@example.pt", status: 'accepted', appliedDate: "2024-03-16", location: "Portugal" },
       { id: 103, name: "Elena Garcia", email: "e.garcia@example.es", status: 'declined', appliedDate: "2024-03-10", location: "Spain" },
+      { id: 104, name: "Dmitri Ivanov", email: "d.ivanov@example.ee", status: 'applied', appliedDate: "2024-03-18", location: "Estonia" },
     ]
   },
   {
@@ -108,7 +108,6 @@ const initialOpportunities: Opportunity[] = [
     tags: ["Tech", "Governance", "Strategy"],
     status: 'open',
     applicants: [
-      { id: 104, name: "Dmitri Ivanov", email: "d.ivanov@example.ee", status: 'applied', appliedDate: "2024-03-18", location: "Estonia" },
       { id: 105, name: "Hana Tanaka", email: "h.tanaka@example.jp", status: 'applied', appliedDate: "2024-03-19", location: "Japan" },
     ]
   }
@@ -116,19 +115,15 @@ const initialOpportunities: Opportunity[] = [
 
 function OpportunitiesContent() {
   const searchParams = useSearchParams()
-  const router = useRouter()
   const role = (searchParams.get("role") as "admin" | "consultant") || "admin"
   const { toast } = useToast()
 
   const [opportunities, setOpportunities] = useState<Opportunity[]>(initialOpportunities)
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedRegion, setSelectedRegion] = useState("all")
-  
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [viewMode, setViewMode] = useState<'list' | 'manage'>('list')
   const [activeOpportunity, setActiveOpportunity] = useState<Opportunity | null>(null)
   const [selectedApplicantIds, setSelectedApplicantIds] = useState<number[]>([])
-  
   const [isMatching, setIsMatching] = useState(false)
   const [aiMatches, setAiMatches] = useState<MatchConsultantsOutput | null>(null)
   const [isMounted, setIsMounted] = useState(false)
@@ -138,18 +133,15 @@ function OpportunitiesContent() {
   }, [])
 
   const filteredOpportunities = useMemo(() => {
-    return opportunities.filter(opp => {
-      const matchesSearch = opp.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                            opp.description.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesRegion = selectedRegion === "all" || opp.region.toLowerCase().includes(selectedRegion.toLowerCase())
-      return matchesSearch && matchesRegion
-    })
-  }, [opportunities, searchQuery, selectedRegion])
+    return opportunities.filter(opp => 
+      opp.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+      opp.description.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  }, [opportunities, searchQuery])
 
   const handleCreateOpportunity = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
-    
     const newOpp: Opportunity = {
       id: Date.now(),
       title: formData.get("title") as string,
@@ -162,13 +154,9 @@ function OpportunitiesContent() {
       status: 'open',
       applicants: []
     }
-
     setOpportunities([newOpp, ...opportunities])
     setIsCreateDialogOpen(false)
-    toast({
-      title: "Opportunity Created",
-      description: "The new project has been successfully published."
-    })
+    toast({ title: "Opportunity Created" })
   }
 
   const enterManageView = (opp: Opportunity) => {
@@ -179,300 +167,229 @@ function OpportunitiesContent() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const exitManageView = () => {
-    setViewMode('list')
-    setActiveOpportunity(null)
-  }
-
   const handleAIMatch = async () => {
     if (!activeOpportunity) return
     setIsMatching(true)
     try {
-      const mockConsultants = [
-        { id: 1, name: "Alice Johnson", profession: "Energy Consultant", sector: "Infrastructure", years: 12, bio: "Expert in renewables." },
-        { id: 2, name: "Bernardo Silva", profession: "Financial Advisor", sector: "Finance", years: 8, bio: "Strategic planning." },
-        { id: 5, name: "Elena Garcia", profession: "Civil Engineer", sector: "Construction", years: 20, bio: "Structural specialist." }
-      ]
-      
       const result = await matchConsultants({
         opportunityDescription: activeOpportunity.description,
-        consultants: mockConsultants
+        consultants: [
+          { id: 1, name: "Alice Johnson", profession: "Expert", sector: "Infra", years: 12, bio: "..." },
+          { id: 2, name: "Bernardo Silva", profession: "Advisor", sector: "Finance", years: 8, bio: "..." }
+        ]
       })
       setAiMatches(result)
-      toast({
-        title: "AI Matching Complete",
-        description: "Found the best candidates based on expertise."
-      })
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "AI Error",
-        description: "Failed to generate AI matches."
-      })
+      toast({ title: "AI Analysis Complete" })
+    } catch (e) {
+      toast({ variant: "destructive", title: "AI Matching Failed" })
     } finally {
       setIsMatching(false)
     }
   }
 
-  const updateApplicantStatus = (oppId: number, applicantId: number, newStatus: Applicant['status']) => {
+  const updateApplicantStatus = (applicantId: number, newStatus: Applicant['status']) => {
+    if (!activeOpportunity) return
     setOpportunities(prev => prev.map(opp => {
-      if (opp.id === oppId) {
+      if (opp.id === activeOpportunity.id) {
         return {
           ...opp,
-          applicants: opp.applicants.map(app => 
-            app.id === applicantId ? { ...app, status: newStatus } : app
-          )
+          applicants: opp.applicants.map(app => app.id === applicantId ? { ...app, status: newStatus } : app)
         }
       }
       return opp
     }))
-
-    if (activeOpportunity?.id === oppId) {
-      setActiveOpportunity(prev => {
-        if (!prev) return null
-        return {
-          ...prev,
-          applicants: prev.applicants.map(app => 
-            app.id === applicantId ? { ...app, status: newStatus } : app
-          )
-        }
-      })
-    }
-
-    toast({
-      title: `Status Updated`,
-      description: `Applicant status set to ${newStatus}.`
-    })
-  }
-
-  const toggleApplicantSelection = (id: number) => {
-    setSelectedApplicantIds(prev => 
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    )
-  }
-
-  const toggleAllApplicants = () => {
-    if (!activeOpportunity) return
-    if (selectedApplicantIds.length === activeOpportunity.applicants.length) {
-      setSelectedApplicantIds([])
-    } else {
-      setSelectedApplicantIds(activeOpportunity.applicants.map(a => a.id))
-    }
-  }
-
-  const previewPublicPage = (id: number) => {
-    window.open(`/public/opportunities/${id}`, '_blank')
+    setActiveOpportunity(prev => prev ? {
+      ...prev,
+      applicants: prev.applicants.map(app => app.id === applicantId ? { ...app, status: newStatus } : app)
+    } : null)
+    toast({ title: "Status Updated", description: `Candidate moved to ${newStatus}` })
   }
 
   if (viewMode === 'manage' && activeOpportunity) {
     const stats = {
-      total: activeOpportunity.applicants.length,
-      accepted: activeOpportunity.applicants.filter(a => a.status === 'accepted').length,
-      pending: activeOpportunity.applicants.filter(a => a.status === 'applied').length,
-      declined: activeOpportunity.applicants.filter(a => a.status === 'declined').length,
+      applied: activeOpportunity.applicants.filter(a => a.status === 'applied'),
+      accepted: activeOpportunity.applicants.filter(a => a.status === 'accepted'),
+      declined: activeOpportunity.applicants.filter(a => a.status === 'declined'),
     }
 
     return (
       <DashboardLayout>
-        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="flex flex-col gap-4">
-            <Button variant="ghost" className="w-fit -ml-2 text-muted-foreground hover:text-primary" onClick={exitManageView}>
-              <ChevronLeft className="mr-2 h-4 w-4" /> Back to Opportunities
+        <div className="space-y-6">
+          <div className="flex items-center gap-4">
+            <Button variant="ghost" onClick={() => setViewMode('list')} className="-ml-2">
+              <ChevronLeft className="mr-2 h-4 w-4" /> Back
             </Button>
-            
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-card p-8 rounded-2xl border shadow-sm">
-              <div className="space-y-2">
-                <div className="flex items-center gap-3">
-                  <Badge className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 transition-colors uppercase tracking-wider text-[10px] font-bold px-3">
-                    {activeOpportunity.region}
-                  </Badge>
-                  <Badge variant="outline" className="text-[10px] font-semibold flex items-center gap-1 border-emerald-500/20 text-emerald-600 bg-emerald-50">
-                    <Clock className="h-3 w-3" /> Published
-                  </Badge>
+            <h1 className="text-2xl font-bold text-primary truncate max-w-xl">{activeOpportunity.title}</h1>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card className="bg-primary/5 border-primary/10">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase text-muted-foreground">Applications</p>
+                  <p className="text-2xl font-bold">{activeOpportunity.applicants.length}</p>
                 </div>
-                <h1 className="text-3xl font-extrabold tracking-tight text-primary font-headline">
-                  {activeOpportunity.title}
-                </h1>
-                <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground mt-2">
-                  <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {activeOpportunity.location}</span>
-                  <span className="flex items-center gap-1.5"><Globe className="h-4 w-4" /> {activeOpportunity.duration}</span>
-                  <span className="flex items-center gap-1.5"><Calendar className="h-4 w-4" /> Deadline: {activeOpportunity.deadline}</span>
+                <Users className="h-8 w-8 text-primary/40" />
+              </CardContent>
+            </Card>
+            <Card className="bg-emerald-50 border-emerald-100">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase text-emerald-600">Accepted</p>
+                  <p className="text-2xl font-bold text-emerald-700">{stats.accepted.length}</p>
                 </div>
-              </div>
-              <div className="flex flex-col gap-2 min-w-[200px]">
-                <Button 
-                  className="bg-accent text-accent-foreground hover:bg-accent/90 shadow-lg shadow-accent/20"
-                  onClick={handleAIMatch}
-                  disabled={isMatching}
-                >
-                  {isMatching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                  Generate AI Match Report
-                </Button>
-                <div className="grid grid-cols-2 gap-2">
-                   <Button variant="outline" size="sm" onClick={() => previewPublicPage(activeOpportunity.id)}>
-                      <ExternalLink className="h-3.5 w-3.5 mr-2" /> Public
-                   </Button>
-                   <Button variant="outline" size="sm" onClick={() => {
-                      navigator.clipboard.writeText(`${window.location.origin}/public/opportunities/${activeOpportunity.id}`);
-                      toast({ title: "Link Copied", description: "Public share link copied to clipboard." });
-                   }}>
-                      <Share2 className="h-3.5 w-3.5 mr-2" /> Share
-                   </Button>
-                </div>
+                <UserCheck className="h-8 w-8 text-emerald-400/40" />
+              </CardContent>
+            </Card>
+            <Button className="h-full bg-accent text-accent-foreground shadow-lg hover:shadow-accent/20" onClick={handleAIMatch} disabled={isMatching}>
+              {isMatching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              AI Candidate Ranking
+            </Button>
+          </div>
+
+          <Tabs defaultValue="kanban" className="w-full">
+            <div className="flex items-center justify-between mb-4">
+              <TabsList>
+                <TabsTrigger value="kanban" className="gap-2"><LayoutGrid className="h-4 w-4" /> Kanban Board</TabsTrigger>
+                <TabsTrigger value="table" className="gap-2"><TableIcon className="h-4 w-4" /> List View</TabsTrigger>
+              </TabsList>
+              <div className="flex gap-2">
+                 <Button variant="outline" size="sm" onClick={() => window.open(`/public/opportunities/${activeOpportunity.id}`)}><ExternalLink className="h-3.5 w-3.5 mr-2" /> View Public Page</Button>
+                 <Button variant="outline" size="sm"><Share2 className="h-3.5 w-3.5 mr-2" /> Share Link</Button>
               </div>
             </div>
-          </div>
 
-          <div className="grid gap-4 md:grid-cols-4">
-            {[
-              { label: "Total Applications", value: stats.total, icon: Users, color: "text-blue-600" },
-              { label: "Pending Review", value: stats.pending, icon: Loader2, color: "text-amber-500" },
-              { label: "Accepted Experts", value: stats.accepted, icon: UserCheck, color: "text-emerald-600" },
-              { label: "Declined", value: stats.declined, icon: UserX, color: "text-rose-600" },
-            ].map((stat, i) => (
-              <Card key={i} className="bg-card shadow-sm">
-                <CardContent className="p-6 flex items-center justify-between">
-                  <div className="space-y-1">
-                    <p className="text-xs font-bold uppercase text-muted-foreground tracking-wider">{stat.label}</p>
-                    <p className="text-3xl font-black">{stat.value}</p>
+            <TabsContent value="kanban" className="mt-0">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Column: Applied */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between px-2">
+                    <h3 className="font-bold text-sm flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-amber-500" />
+                      Applied <span className="text-muted-foreground font-normal">({stats.applied.length})</span>
+                    </h3>
                   </div>
-                  <div className={`p-3 rounded-xl bg-muted/50 ${stat.color}`}>
-                    <stat.icon className="h-6 w-6" />
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-
-          <div className="grid lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2 space-y-6">
-              <Card className="shadow-md border-none ring-1 ring-border">
-                <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/20">
-                  <CardTitle className="text-lg font-bold flex items-center gap-2">
-                    <Users className="h-5 w-5 text-primary" />
-                    Applicant Management
-                  </CardTitle>
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
-                      <Input placeholder="Filter list..." className="pl-8 h-9 text-xs w-48 bg-background" />
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <Table>
-                    <TableHeader className="bg-muted/30">
-                      <TableRow>
-                        <TableHead className="w-[40px] pl-4">
-                          <Checkbox checked={selectedApplicantIds.length === stats.total && stats.total > 0} onCheckedChange={toggleAllApplicants} />
-                        </TableHead>
-                        <TableHead className="text-xs uppercase font-bold text-muted-foreground">Consultant Name</TableHead>
-                        <TableHead className="text-xs uppercase font-bold text-muted-foreground text-center">Location</TableHead>
-                        <TableHead className="text-xs uppercase font-bold text-muted-foreground text-center">Status</TableHead>
-                        <TableHead className="text-xs uppercase font-bold text-muted-foreground text-right pr-4">Decision</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {activeOpportunity.applicants.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={5} className="h-64 text-center">
-                            <div className="flex flex-col items-center justify-center space-y-3">
-                              <div className="p-4 bg-muted/50 rounded-full">
-                                <Users className="h-8 w-8 text-muted-foreground/50" />
-                              </div>
-                              <p className="text-muted-foreground font-medium">No applications have been received yet.</p>
-                              <Button variant="outline" size="sm" onClick={() => previewPublicPage(activeOpportunity.id)}>Share Public Landing Page</Button>
+                  <div className="space-y-3">
+                    {stats.applied.map(app => (
+                      <Card key={app.id} className="group hover:ring-2 hover:ring-primary/20 transition-all cursor-pointer">
+                        <CardContent className="p-4 space-y-3">
+                          <div className="flex justify-between items-start">
+                            <div className="flex items-center gap-2">
+                               <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground">
+                                 {app.name.charAt(0)}
+                               </div>
+                               <div>
+                                 <p className="text-sm font-bold leading-none">{app.name}</p>
+                                 <p className="text-[10px] text-muted-foreground mt-1">{app.location}</p>
+                               </div>
                             </div>
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        activeOpportunity.applicants.map((applicant) => (
-                          <TableRow key={applicant.id} className="hover:bg-muted/20 transition-colors">
-                            <TableCell className="pl-4">
-                              <Checkbox checked={selectedApplicantIds.includes(applicant.id)} onCheckedChange={() => toggleApplicantSelection(applicant.id)} />
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-col">
-                                <span className="font-bold text-foreground">{applicant.name}</span>
-                                <span className="text-[10px] text-muted-foreground flex items-center gap-1"><Mail className="h-2.5 w-2.5" /> {applicant.email}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant="outline" className="font-normal text-[10px]">{applicant.location}</Badge>
-                            </TableCell>
-                            <TableCell className="text-center">
-                              <Badge variant={applicant.status === 'accepted' ? 'default' : applicant.status === 'declined' ? 'destructive' : 'secondary'} className="text-[9px] uppercase font-black px-2 py-0.5">
-                                {applicant.status}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-right pr-4">
-                              <div className="flex justify-end gap-1">
-                                <Button 
-                                  size="icon" 
-                                  variant="ghost" 
-                                  className="h-8 w-8 text-emerald-600 hover:bg-emerald-50" 
-                                  onClick={() => updateApplicantStatus(activeOpportunity.id, applicant.id, 'accepted')}
-                                >
-                                  <CircleCheck className="h-4.5 w-4.5" />
-                                </Button>
-                                <Button 
-                                  size="icon" 
-                                  variant="ghost" 
-                                  className="h-8 w-8 text-rose-600 hover:bg-rose-50" 
-                                  onClick={() => updateApplicantStatus(activeOpportunity.id, applicant.id, 'declined')}
-                                >
-                                  <XCircle className="h-4.5 w-4.5" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      )}
-                    </TableBody>
-                  </Table>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="space-y-6">
-              <Card className="bg-primary text-primary-foreground overflow-hidden relative">
-                <CardHeader>
-                  <CardTitle className="text-lg font-bold">AI Candidate Matching</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {!aiMatches && !isMatching ? (
-                    <Button className="w-full bg-white text-primary" onClick={handleAIMatch}>Analyze Pool</Button>
-                  ) : isMatching ? (
-                    <div className="py-8 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" /><p className="text-xs">Analyzing...</p></div>
-                  ) : (
-                    <div className="space-y-4">
-                      {aiMatches.matches.map(m => (
-                        <div key={m.consultantId} className="bg-white/10 p-3 rounded-lg border border-white/20">
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="text-[10px] font-bold">Consultant #{m.consultantId}</span>
-                            <Badge className="bg-emerald-400 text-emerald-900 border-none text-[9px]">{m.matchScore}%</Badge>
                           </div>
-                          <p className="text-[10px] text-white/70 italic line-clamp-2">{m.reasoning}</p>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg font-bold">Project Brief</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-sm">
-                  <p className="text-muted-foreground leading-relaxed">{activeOpportunity.description}</p>
-                  <div className="flex flex-wrap gap-1">
-                    {activeOpportunity.tags.map(t => <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>)}
+                          <div className="flex gap-1 pt-2 border-t">
+                            <Button size="sm" variant="ghost" className="h-7 flex-1 text-emerald-600 hover:bg-emerald-50" onClick={() => updateApplicantStatus(app.id, 'accepted')}>
+                              Accept
+                            </Button>
+                            <Button size="sm" variant="ghost" className="h-7 flex-1 text-rose-600 hover:bg-rose-50" onClick={() => updateApplicantStatus(app.id, 'declined')}>
+                              Decline
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
                   </div>
-                </CardContent>
+                </div>
+
+                {/* Column: Accepted */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between px-2">
+                    <h3 className="font-bold text-sm flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                      Shortlisted <span className="text-muted-foreground font-normal">({stats.accepted.length})</span>
+                    </h3>
+                  </div>
+                  <div className="space-y-3">
+                    {stats.accepted.map(app => (
+                      <Card key={app.id} className="border-emerald-200 bg-emerald-50/30">
+                        <CardContent className="p-4 flex items-center justify-between">
+                           <div className="flex items-center gap-2">
+                             <UserIcon className="h-4 w-4 text-emerald-600" />
+                             <p className="text-sm font-bold">{app.name}</p>
+                           </div>
+                           <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={() => updateApplicantStatus(app.id, 'applied')}><ChevronLeft className="h-4 w-4" /></Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Column: Declined */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between px-2">
+                    <h3 className="font-bold text-sm flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full bg-rose-500" />
+                      Declined <span className="text-muted-foreground font-normal">({stats.declined.length})</span>
+                    </h3>
+                  </div>
+                  <div className="space-y-3 opacity-60">
+                    {stats.declined.map(app => (
+                      <Card key={app.id} className="border-rose-100 bg-rose-50/30">
+                        <CardContent className="p-4 flex items-center justify-between">
+                           <p className="text-sm font-medium">{app.name}</p>
+                           <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={() => updateApplicantStatus(app.id, 'applied')}><ChevronRight className="h-4 w-4 rotate-180" /></Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="table">
+              <Card>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Consultant</TableHead>
+                      <TableHead>Location</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {activeOpportunity.applicants.map(app => (
+                      <TableRow key={app.id}>
+                        <TableCell className="font-bold">{app.name}</TableCell>
+                        <TableCell>{app.location}</TableCell>
+                        <TableCell><Badge variant="outline">{app.status}</Badge></TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="sm" onClick={() => updateApplicantStatus(app.id, 'accepted')}>Approve</Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </Card>
-            </div>
-          </div>
+            </TabsContent>
+          </Tabs>
+
+          {aiMatches && (
+            <Card className="bg-primary text-primary-foreground">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5" /> AI Recommended Match</CardTitle>
+                <CardDescription className="text-primary-foreground/70">Matching expertise with project requirements.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid md:grid-cols-2 gap-4">
+                {aiMatches.matches.map(m => (
+                  <div key={m.consultantId} className="bg-white/10 p-4 rounded-xl border border-white/20">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm font-bold">Consultant #{m.consultantId}</span>
+                      <Badge className="bg-accent text-accent-foreground border-none font-black">{m.matchScore}% FIT</Badge>
+                    </div>
+                    <p className="text-xs text-white/80 italic leading-relaxed">{m.reasoning}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
       </DashboardLayout>
     )
@@ -483,75 +400,30 @@ function OpportunitiesContent() {
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">
-              {role === 'admin' ? 'Manage Opportunities' : 'Available Opportunities'}
-            </h1>
-            <p className="text-muted-foreground">
-              {role === 'admin' ? 'Create and oversee consultant projects globally.' : 'Find and apply for projects that match your expertise.'}
-            </p>
+            <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Projects</h1>
+            <p className="text-muted-foreground">Oversee and manage foundation project opportunities.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <div className="relative w-full md:w-64">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search projects..." 
-                className="pl-8"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
+          <div className="flex gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input placeholder="Search..." className="pl-8" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
-            
             {role === 'admin' && (
               <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                <DialogTrigger asChild>
-                  <Button className="bg-primary">
-                    <Plus className="mr-2 h-4 w-4" /> Post New
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-[600px]">
-                  <form onSubmit={handleCreateOpportunity}>
-                    <DialogHeader>
-                      <DialogTitle>Create New Opportunity</DialogTitle>
-                      <DialogDescription>Fill in the details to publish a new project.</DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="title">Project Title</Label>
-                          <Input id="title" name="title" required />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="location">Location</Label>
-                          <Input id="location" name="location" required />
-                        </div>
+                <DialogTrigger asChild><Button className="bg-primary"><Plus className="h-4 w-4 mr-2" /> Post New</Button></DialogTrigger>
+                <DialogContent>
+                  <form onSubmit={handleCreateOpportunity} className="space-y-4">
+                    <DialogHeader><DialogTitle>New Opportunity</DialogTitle></DialogHeader>
+                    <div className="grid gap-4">
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input name="title" placeholder="Project Title" required />
+                        <Input name="location" placeholder="Location" required />
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="region">Region</Label>
-                          <Select name="region" required>
-                            <SelectTrigger><SelectValue placeholder="Select Region" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Africa - East">Africa - East</SelectItem>
-                              <SelectItem value="Africa - West">Africa - West</SelectItem>
-                              <SelectItem value="Asia & Pacific">Asia & Pacific</SelectItem>
-                              <SelectItem value="Europe - Western">Europe - Western</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="deadline">Application Deadline</Label>
-                          <Input id="deadline" name="deadline" type="date" required />
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="description">Detailed Description</Label>
-                        <Textarea id="description" name="description" rows={4} required />
-                      </div>
+                      <Input name="region" placeholder="Region (e.g. Africa - East)" required />
+                      <Textarea name="description" placeholder="Brief description..." rows={3} required />
+                      <Input name="tags" placeholder="Tags (comma separated)" />
                     </div>
-                    <DialogFooter>
-                      <Button variant="outline" type="button" onClick={() => setIsCreateDialogOpen(false)}>Cancel</Button>
-                      <Button type="submit">Publish Opportunity</Button>
-                    </DialogFooter>
+                    <DialogFooter><Button type="submit">Publish Project</Button></DialogFooter>
                   </form>
                 </DialogContent>
               </Dialog>
@@ -560,38 +432,25 @@ function OpportunitiesContent() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {filteredOpportunities.map((opp) => (
-            <Card key={opp.id} className="group hover:border-primary/50 transition-all shadow-sm flex flex-col">
-              <CardHeader className="pb-4">
-                <div className="flex justify-between items-start mb-2">
-                  <Badge variant="secondary" className="bg-accent/10 text-accent-foreground border-accent/20">
-                    {opp.region}
-                  </Badge>
-                </div>
-                <CardTitle className="text-xl line-clamp-1">{opp.title}</CardTitle>
-                <CardDescription className="flex items-center gap-1 text-xs">
-                  <Calendar className="h-3 w-3" />
-                  Due: {isMounted ? new Date(opp.deadline).toLocaleDateString() : opp.deadline}
+          {filteredOpportunities.map(opp => (
+            <Card key={opp.id} className="group hover:border-primary/50 transition-all shadow-sm">
+              <CardHeader className="pb-3">
+                <Badge variant="secondary" className="w-fit text-[10px] mb-2">{opp.region}</Badge>
+                <CardTitle className="text-lg line-clamp-1">{opp.title}</CardTitle>
+                <CardDescription className="text-xs flex items-center gap-1 mt-1">
+                  <MapPin className="h-3 w-3" /> {opp.location}
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4 flex-1">
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {opp.location}</div>
-                </div>
-                <p className="text-sm line-clamp-2 leading-relaxed text-foreground/80">{opp.description}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {opp.tags.map((tag) => <Badge key={tag} variant="outline" className="text-[10px]">{tag}</Badge>)}
+              <CardContent className="space-y-3">
+                <p className="text-sm text-muted-foreground line-clamp-2">{opp.description}</p>
+                <div className="flex items-center gap-4 text-xs font-bold text-primary">
+                  <span className="flex items-center gap-1"><Users className="h-3 w-3" /> {opp.applicants.length} Applicants</span>
+                  <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Due {opp.deadline}</span>
                 </div>
               </CardContent>
-              <CardFooter className="pt-0 flex gap-2">
-                {role === 'admin' ? (
-                  <>
-                    <Button variant="outline" className="flex-1" onClick={() => enterManageView(opp)}>Manage</Button>
-                    <Button variant="ghost" size="icon" onClick={() => previewPublicPage(opp.id)} title="Public Preview"><ExternalLink className="h-4 w-4" /></Button>
-                  </>
-                ) : (
-                  <Button className="w-full" onClick={() => previewPublicPage(opp.id)}>View & Apply <ArrowRight className="ml-2 h-4 w-4" /></Button>
-                )}
+              <CardFooter className="pt-2 border-t mt-3 flex gap-2">
+                <Button className="flex-1 bg-primary/95" onClick={() => enterManageView(opp)}>Manage Project</Button>
+                <Button variant="ghost" size="icon" onClick={() => window.open(`/public/opportunities/${opp.id}`)}><ExternalLink className="h-4 w-4" /></Button>
               </CardFooter>
             </Card>
           ))}
@@ -603,7 +462,7 @@ function OpportunitiesContent() {
 
 export default function OpportunitiesPage() {
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading Opportunities...</div>}>
+    <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading Projects...</div>}>
       <OpportunitiesContent />
     </Suspense>
   )
