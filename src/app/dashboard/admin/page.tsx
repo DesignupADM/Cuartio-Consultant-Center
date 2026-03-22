@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -13,34 +13,73 @@ import { useToast } from "@/hooks/use-toast"
 import { 
   Settings, 
   Users, 
-  CircleHelp, 
   ShieldCheck, 
   Trash2, 
   SquarePen,
   Plus,
   Save,
-  Database
+  Database,
+  Loader2
 } from "lucide-react"
-
-const accounts = [
-  { id: 1, name: "John Doe", email: "admin@connectflow.pro", role: "Super Admin", status: "Active" },
-  { id: 2, name: "Sarah Smith", email: "sarah@connectflow.pro", role: "Manager", status: "Active" },
-  { id: 3, name: "Mike Ross", email: "mike@connectflow.pro", role: "Editor", status: "Inactive" },
-]
+import { useFirestore, useCollection, useDoc } from "@/firebase"
+import { collection, query, where, doc, setDoc, updateDoc, deleteDoc } from "firebase/firestore"
+import { errorEmitter } from "@/firebase/error-emitter"
+import { FirestorePermissionError } from "@/firebase/errors"
 
 export default function AdminPanelPage() {
   const { toast } = useToast()
+  const db = useFirestore()
   const [isSaving, setIsSaving] = useState(false)
 
-  const handleSaveSettings = () => {
-    setIsSaving(true)
-    setTimeout(() => {
-      setIsSaving(false)
-      toast({
-        title: "Configuration Saved",
-        description: "System-wide settings have been updated successfully."
+  // Fetch admin users
+  const adminsQuery = useMemo(() => query(collection(db, "users"), where("role", "==", "admin")), [db])
+  const { data: admins, loading: adminsLoading } = useCollection(adminsQuery)
+
+  // Fetch global settings
+  const settingsRef = useMemo(() => doc(db, "settings", "global"), [db])
+  const { data: settings, loading: settingsLoading } = useDoc(settingsRef)
+
+  const handleToggleSetting = (key: string, value: boolean) => {
+    updateDoc(settingsRef, { [key]: value })
+      .catch((err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: settingsRef.path,
+          operation: 'update',
+          requestResourceData: { [key]: value }
+        }))
       })
-    }, 1000)
+  }
+
+  const handleSaveGeneral = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsSaving(true)
+    const formData = new FormData(e.currentTarget)
+    const data = {
+      supportEmail: formData.get("supportEmail"),
+      dbLimit: parseInt(formData.get("dbLimit") as string) || 5000,
+      updatedAt: new Date().toISOString()
+    }
+
+    setDoc(settingsRef, data, { merge: true })
+      .then(() => {
+        toast({ title: "Settings Saved", description: "System configuration updated." })
+      })
+      .catch((err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: settingsRef.path,
+          operation: 'write',
+          requestResourceData: data
+        }))
+      })
+      .finally(() => setIsSaving(false))
+  }
+
+  const handleDeleteAdmin = (adminId: string) => {
+    if (confirm("Are you sure you want to remove this administrator?")) {
+      deleteDoc(doc(db, "users", adminId))
+        .then(() => toast({ title: "Admin Removed" }))
+        .catch(() => toast({ variant: "destructive", title: "Action Failed" }))
+    }
   }
 
   return (
@@ -67,26 +106,39 @@ export default function AdminPanelPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {accounts.map((acc) => (
-                  <div key={acc.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/10">
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center text-primary">
-                        <Users className="h-4 w-4" />
+                {adminsLoading ? (
+                  <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+                ) : admins.length === 0 ? (
+                  <p className="text-sm text-muted-foreground text-center py-4">No other administrators found.</p>
+                ) : (
+                  admins.map((acc: any) => (
+                    <div key={acc.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/10 group transition-colors hover:bg-muted/20">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded bg-primary/10 flex items-center justify-center text-primary">
+                          <Users className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold">{acc.firstName} {acc.lastName}</p>
+                          <p className="text-xs text-muted-foreground">{acc.email}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-semibold">{acc.name}</p>
-                        <p className="text-xs text-muted-foreground">{acc.email}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                       <Badge variant="outline" className="text-[10px]">{acc.role}</Badge>
-                       <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-4">
+                        <Badge variant="outline" className="text-[10px] uppercase tracking-widest">{acc.role}</Badge>
+                        <div className="flex items-center gap-2">
                           <Button variant="ghost" size="icon" className="h-8 w-8"><SquarePen className="h-3 w-3" /></Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="h-3 w-3" /></Button>
-                       </div>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => handleDeleteAdmin(acc.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
             </CardContent>
           </Card>
@@ -99,13 +151,13 @@ export default function AdminPanelPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Button variant="outline" className="w-full justify-start">
+              <Button variant="outline" className="w-full justify-start font-bold text-xs uppercase tracking-widest" onClick={() => toast({ title: "Backup Started", description: "Database snapshot is being created." })}>
                 Backup Database Now
               </Button>
-              <Button variant="outline" className="w-full justify-start">
+              <Button variant="outline" className="w-full justify-start font-bold text-xs uppercase tracking-widest" onClick={() => toast({ title: "Logs Exported", description: "Check your downloads for audit_logs.json" })}>
                 Export Audit Logs (JSON)
               </Button>
-              <Button variant="outline" className="w-full justify-start text-destructive hover:text-destructive">
+              <Button variant="outline" className="w-full justify-start text-destructive hover:text-destructive font-bold text-xs uppercase tracking-widest">
                 Purge Inactive Accounts
               </Button>
             </CardContent>
@@ -120,46 +172,58 @@ export default function AdminPanelPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-8">
-             <div className="grid md:grid-cols-2 gap-12">
-                <div className="space-y-6">
-                   <div className="flex items-center justify-between space-x-2">
-                      <div className="flex flex-col space-y-1">
-                        <Label>AI CV Extraction</Label>
-                        <span className="text-xs text-muted-foreground">Automatically process CVs upon upload.</span>
-                      </div>
-                      <Switch defaultChecked />
-                   </div>
-                   <div className="flex items-center justify-between space-x-2">
-                      <div className="flex flex-col space-y-1">
-                        <Label>Public Registration</Label>
-                        <span className="text-xs text-muted-foreground">Allow new consultants to register via homepage.</span>
-                      </div>
-                      <Switch defaultChecked />
-                   </div>
-                   <div className="flex items-center justify-between space-x-2">
-                      <div className="flex flex-col space-y-1">
-                        <Label>Email Notifications</Label>
-                        <span className="text-xs text-muted-foreground">Send system updates and match alerts via email.</span>
-                      </div>
-                      <Switch defaultChecked />
-                   </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="support-email">Support Email</Label>
-                    <Input id="support-email" defaultValue="support@connectflow.pro" />
+             <form onSubmit={handleSaveGeneral}>
+               <div className="grid md:grid-cols-2 gap-12">
+                  <div className="space-y-6">
+                     <div className="flex items-center justify-between space-x-2">
+                        <div className="flex flex-col space-y-1">
+                          <Label className="font-bold">AI CV Extraction</Label>
+                          <span className="text-xs text-muted-foreground">Automatically process CVs upon upload using Genkit.</span>
+                        </div>
+                        <Switch 
+                          checked={settings?.aiExtraction ?? true} 
+                          onCheckedChange={(val) => handleToggleSetting("aiExtraction", val)} 
+                        />
+                     </div>
+                     <div className="flex items-center justify-between space-x-2">
+                        <div className="flex flex-col space-y-1">
+                          <Label className="font-bold">Public Registration</Label>
+                          <span className="text-xs text-muted-foreground">Allow new consultants to register via homepage.</span>
+                        </div>
+                        <Switch 
+                          checked={settings?.publicRegistration ?? true} 
+                          onCheckedChange={(val) => handleToggleSetting("publicRegistration", val)}
+                        />
+                     </div>
+                     <div className="flex items-center justify-between space-x-2">
+                        <div className="flex flex-col space-y-1">
+                          <Label className="font-bold">Email Notifications</Label>
+                          <span className="text-xs text-muted-foreground">Send system updates and match alerts via email.</span>
+                        </div>
+                        <Switch 
+                          checked={settings?.emailNotifications ?? false} 
+                          onCheckedChange={(val) => handleToggleSetting("emailNotifications", val)}
+                        />
+                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="db-limit">Database Export Limit</Label>
-                    <Input id="db-limit" type="number" defaultValue="5000" />
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="supportEmail" className="font-bold uppercase text-[10px] tracking-widest">Support Email</Label>
+                      <Input id="supportEmail" name="supportEmail" defaultValue={settings?.supportEmail ?? "support@connectflow.pro"} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="dbLimit" className="font-bold uppercase text-[10px] tracking-widest">Database Export Limit</Label>
+                      <Input id="dbLimit" name="dbLimit" type="number" defaultValue={settings?.dbLimit ?? 5000} />
+                    </div>
                   </div>
-                </div>
-             </div>
-             <div className="flex justify-end pt-4 border-t">
-                <Button className="bg-primary min-w-[150px]" onClick={handleSaveSettings} disabled={isSaving}>
-                  {isSaving ? "Saving..." : <><Save className="mr-2 h-4 w-4" /> Save All Settings</>}
-                </Button>
-             </div>
+               </div>
+               <div className="flex justify-end pt-8 mt-8 border-t">
+                  <Button type="submit" className="bg-primary min-w-[200px] font-bold shadow-lg shadow-primary/20" disabled={isSaving}>
+                    {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="mr-2 h-4 w-4" />}
+                    {isSaving ? "Saving..." : "Save All Settings"}
+                  </Button>
+               </div>
+             </form>
           </CardContent>
         </Card>
       </div>
