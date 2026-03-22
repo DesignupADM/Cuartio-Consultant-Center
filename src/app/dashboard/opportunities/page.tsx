@@ -1,6 +1,7 @@
+
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, Suspense } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,21 +11,16 @@ import {
   MapPin, 
   Calendar, 
   ArrowRight, 
-  Info, 
   Plus, 
   Users, 
   Search, 
-  Mail, 
   CircleCheck, 
   XCircle, 
-  MoreHorizontal,
   Trash2,
-  FileText,
   Sparkles,
   Loader2
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { 
   Dialog, 
   DialogContent, 
@@ -39,7 +35,6 @@ import {
   SheetContent, 
   SheetHeader, 
   SheetTitle, 
-  SheetDescription,
   SheetFooter
 } from "@/components/ui/sheet"
 import { Input } from "@/components/ui/input"
@@ -54,16 +49,7 @@ import {
   TableRow 
 } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuLabel, 
-  DropdownMenuSeparator, 
-  DropdownMenuTrigger 
-} from "@/components/ui/dropdown-menu"
 import { useToast } from "@/hooks/use-toast"
-import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { matchConsultants, type MatchConsultantsOutput } from "@/ai/flows/match-consultants-flow"
 
@@ -135,7 +121,7 @@ const initialOpportunities: Opportunity[] = [
   },
 ]
 
-export default function OpportunitiesPage() {
+function OpportunitiesContent() {
   const searchParams = useSearchParams()
   const role = (searchParams.get("role") as "admin" | "consultant") || "admin"
   const { toast } = useToast()
@@ -144,15 +130,18 @@ export default function OpportunitiesPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedRegion, setSelectedRegion] = useState("all")
   
-  // Management States
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isManageSheetOpen, setIsManageSheetOpen] = useState(false)
   const [activeOpportunity, setActiveOpportunity] = useState<Opportunity | null>(null)
   const [selectedApplicantIds, setSelectedApplicantIds] = useState<number[]>([])
   
-  // AI Matching State
   const [isMatching, setIsMatching] = useState(false)
   const [aiMatches, setAiMatches] = useState<MatchConsultantsOutput | null>(null)
+  const [isMounted, setIsMounted] = useState(false)
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   const filteredOpportunities = useMemo(() => {
     return opportunities.filter(opp => {
@@ -199,7 +188,6 @@ export default function OpportunitiesPage() {
     if (!activeOpportunity) return
     setIsMatching(true)
     try {
-      // Mocked directory of consultants to match against
       const mockConsultants = [
         { id: 1, name: "Alice Johnson", profession: "Energy Consultant", sector: "Infrastructure", years: 12, bio: "Expert in renewables." },
         { id: 2, name: "Bernardo Silva", profession: "Financial Advisor", sector: "Finance", years: 8, bio: "Strategic planning." },
@@ -378,7 +366,7 @@ export default function OpportunitiesPage() {
                 <CardTitle className="text-xl group-hover:text-primary transition-colors line-clamp-1">{opp.title}</CardTitle>
                 <CardDescription className="flex items-center gap-1 text-xs">
                   <Calendar className="h-3 w-3" />
-                  Due: {new Date(opp.deadline).toLocaleDateString()}
+                  Due: {isMounted ? new Date(opp.deadline).toLocaleDateString() : opp.deadline}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 flex-1">
@@ -518,5 +506,13 @@ export default function OpportunitiesPage() {
         </Sheet>
       </div>
     </DashboardLayout>
+  )
+}
+
+export default function OpportunitiesPage() {
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading Opportunities...</div>}>
+      <OpportunitiesContent />
+    </Suspense>
   )
 }
