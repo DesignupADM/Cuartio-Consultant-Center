@@ -1,3 +1,4 @@
+
 {
   "placeholderImages": [
     {
@@ -17,6 +18,12 @@
       "description": "Global technology network visualization",
       "imageUrl": "https://picsum.photos/seed/opp2/800/400",
       "imageHint": "technology network"
+    },
+    {
+      "id": "hero-public",
+      "description": "Abstract global connectivity background",
+      "imageUrl": "https://picsum.photos/seed/public-hero/1200/600",
+      "imageHint": "global connectivity"
     }
   ]
 }

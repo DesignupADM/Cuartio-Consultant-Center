@@ -26,7 +26,9 @@ import {
   Clock,
   LayoutDashboard,
   Filter,
-  MoreVertical
+  MoreVertical,
+  ExternalLink,
+  Share2
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
@@ -51,7 +53,7 @@ import {
 } from "@/components/ui/table"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
-import { useSearchParams } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import { matchConsultants, type MatchConsultantsOutput } from "@/ai/flows/match-consultants-flow"
 import { Separator } from "@/components/ui/separator"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
@@ -109,23 +111,12 @@ const initialOpportunities: Opportunity[] = [
       { id: 104, name: "Dmitri Ivanov", email: "d.ivanov@example.ee", status: 'applied', appliedDate: "2024-03-18", location: "Estonia" },
       { id: 105, name: "Hana Tanaka", email: "h.tanaka@example.jp", status: 'applied', appliedDate: "2024-03-19", location: "Japan" },
     ]
-  },
-  {
-    id: 3,
-    title: "Public Health Policy Expert",
-    location: "Geneva, Switzerland",
-    region: "Western Europe",
-    duration: "4 Months",
-    deadline: "2024-11-02",
-    description: "Provide high-level policy advice on pandemic preparedness frameworks for international health organizations.",
-    tags: ["Healthcare", "Policy", "International"],
-    status: 'open',
-    applicants: []
-  },
+  }
 ]
 
 function OpportunitiesContent() {
   const searchParams = useSearchParams()
+  const router = useRouter()
   const role = (searchParams.get("role") as "admin" | "consultant") || "admin"
   const { toast } = useToast()
 
@@ -269,6 +260,10 @@ function OpportunitiesContent() {
     }
   }
 
+  const previewPublicPage = (id: number) => {
+    window.open(`/public/opportunities/${id}`, '_blank')
+  }
+
   if (viewMode === 'manage' && activeOpportunity) {
     const stats = {
       total: activeOpportunity.applicants.length,
@@ -313,9 +308,17 @@ function OpportunitiesContent() {
                   {isMatching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                   Generate AI Match Report
                 </Button>
-                <Button variant="outline" className="text-muted-foreground">
-                  Edit Details
-                </Button>
+                <div className="grid grid-cols-2 gap-2">
+                   <Button variant="outline" size="sm" onClick={() => previewPublicPage(activeOpportunity.id)}>
+                      <ExternalLink className="h-3.5 w-3.5 mr-2" /> Public
+                   </Button>
+                   <Button variant="outline" size="sm" onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/public/opportunities/${activeOpportunity.id}`);
+                      toast({ title: "Link Copied", description: "Public share link copied to clipboard." });
+                   }}>
+                      <Share2 className="h-3.5 w-3.5 mr-2" /> Share
+                   </Button>
+                </div>
               </div>
             </div>
           </div>
@@ -354,9 +357,6 @@ function OpportunitiesContent() {
                       <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
                       <Input placeholder="Filter list..." className="pl-8 h-9 text-xs w-48 bg-background" />
                     </div>
-                    <Button variant="outline" size="sm" className="h-9">
-                      <Filter className="h-3.5 w-3.5 mr-2" /> Filter
-                    </Button>
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -381,7 +381,7 @@ function OpportunitiesContent() {
                                 <Users className="h-8 w-8 text-muted-foreground/50" />
                               </div>
                               <p className="text-muted-foreground font-medium">No applications have been received yet.</p>
-                              <Button variant="outline" size="sm">Invite Consultants</Button>
+                              <Button variant="outline" size="sm" onClick={() => previewPublicPage(activeOpportunity.id)}>Share Public Landing Page</Button>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -411,7 +411,6 @@ function OpportunitiesContent() {
                                   size="icon" 
                                   variant="ghost" 
                                   className="h-8 w-8 text-emerald-600 hover:bg-emerald-50" 
-                                  title="Accept"
                                   onClick={() => updateApplicantStatus(activeOpportunity.id, applicant.id, 'accepted')}
                                 >
                                   <CircleCheck className="h-4.5 w-4.5" />
@@ -420,23 +419,10 @@ function OpportunitiesContent() {
                                   size="icon" 
                                   variant="ghost" 
                                   className="h-8 w-8 text-rose-600 hover:bg-rose-50" 
-                                  title="Decline"
                                   onClick={() => updateApplicantStatus(activeOpportunity.id, applicant.id, 'declined')}
                                 >
                                   <XCircle className="h-4.5 w-4.5" />
                                 </Button>
-                                <DropdownMenu>
-                                  <DropdownMenuTrigger asChild>
-                                    <Button size="icon" variant="ghost" className="h-8 w-8">
-                                      <MoreVertical className="h-4 w-4" />
-                                    </Button>
-                                  </DropdownMenuTrigger>
-                                  <DropdownMenuContent align="end">
-                                    <DropdownMenuItem>View Full Profile</DropdownMenuItem>
-                                    <DropdownMenuItem>Send Private Message</DropdownMenuItem>
-                                    <DropdownMenuItem className="text-destructive">Remove Application</DropdownMenuItem>
-                                  </DropdownMenuContent>
-                                </DropdownMenu>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -445,69 +431,30 @@ function OpportunitiesContent() {
                     </TableBody>
                   </Table>
                 </CardContent>
-                <CardFooter className="bg-muted/10 border-t p-4 flex items-center justify-between">
-                  <p className="text-xs text-muted-foreground">{selectedApplicantIds.length} applicants selected</p>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" disabled={selectedApplicantIds.length === 0}>
-                      <Mail className="mr-2 h-3 w-3" /> Bulk Email
-                    </Button>
-                    <Button variant="outline" size="sm" disabled={selectedApplicantIds.length === 0}>
-                      Download CVs
-                    </Button>
-                  </div>
-                </CardFooter>
               </Card>
             </div>
 
             <div className="space-y-6">
-              <Card className="bg-primary shadow-2xl border-none text-primary-foreground overflow-hidden relative">
-                <div className="absolute top-0 right-0 p-8 opacity-10">
-                  <Sparkles className="h-32 w-32" />
-                </div>
+              <Card className="bg-primary text-primary-foreground overflow-hidden relative">
                 <CardHeader>
-                  <CardTitle className="text-lg font-bold flex items-center gap-2">
-                    <Sparkles className="h-5 w-5" />
-                    AI Talent Match
-                  </CardTitle>
-                  <CardDescription className="text-primary-foreground/70">
-                    Automatically identifying the best fit based on project requirements.
-                  </CardDescription>
+                  <CardTitle className="text-lg font-bold">AI Candidate Matching</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {!aiMatches && !isMatching ? (
-                    <div className="text-center py-6 space-y-4">
-                      <div className="h-16 w-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto">
-                        <Loader2 className="h-8 w-8 text-white/50" />
-                      </div>
-                      <p className="text-sm font-medium">Ready to analyze candidate pool.</p>
-                      <Button className="w-full bg-white text-primary hover:bg-white/90" onClick={handleAIMatch}>
-                        Run Analysis
-                      </Button>
-                    </div>
+                    <Button className="w-full bg-white text-primary" onClick={handleAIMatch}>Analyze Pool</Button>
                   ) : isMatching ? (
-                    <div className="text-center py-12 space-y-4">
-                      <Loader2 className="h-12 w-12 animate-spin mx-auto text-white/50" />
-                      <p className="text-sm animate-pulse">Matching profiles with project scope...</p>
-                    </div>
+                    <div className="py-8 text-center"><Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" /><p className="text-xs">Analyzing...</p></div>
                   ) : (
-                    <div className="space-y-4 animate-in fade-in zoom-in-95 duration-500">
-                      {aiMatches?.matches.map((m) => (
-                        <div key={m.consultantId} className="bg-white/10 p-4 rounded-xl backdrop-blur-sm border border-white/10 space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-xs font-black tracking-widest uppercase">Consultant #{m.consultantId}</span>
-                            <Badge className="bg-emerald-400 text-emerald-900 border-none font-black">{m.matchScore}% FIT</Badge>
+                    <div className="space-y-4">
+                      {aiMatches.matches.map(m => (
+                        <div key={m.consultantId} className="bg-white/10 p-3 rounded-lg border border-white/20">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-[10px] font-bold">Consultant #{m.consultantId}</span>
+                            <Badge className="bg-emerald-400 text-emerald-900 border-none text-[9px]">{m.matchScore}%</Badge>
                           </div>
-                          <p className="text-[11px] leading-relaxed text-white/80 italic">
-                            "{m.reasoning}"
-                          </p>
-                          <Button variant="ghost" size="sm" className="w-full h-8 text-[10px] text-white hover:bg-white/10 border border-white/20">
-                            Review Analysis
-                          </Button>
+                          <p className="text-[10px] text-white/70 italic line-clamp-2">{m.reasoning}</p>
                         </div>
                       ))}
-                      <Button variant="outline" className="w-full border-white/20 text-white hover:bg-white/10" onClick={() => setAiMatches(null)}>
-                        Reset Results
-                      </Button>
                     </div>
                   )}
                 </CardContent>
@@ -515,24 +462,12 @@ function OpportunitiesContent() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg font-bold flex items-center gap-2">
-                    <LayoutDashboard className="h-5 w-5 text-primary" />
-                    Project Brief
-                  </CardTitle>
+                  <CardTitle className="text-lg font-bold">Project Brief</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4 text-sm">
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Scope</p>
-                    <p className="leading-relaxed text-foreground/80">{activeOpportunity.description}</p>
-                  </div>
-                  <Separator />
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-bold uppercase text-muted-foreground tracking-widest">Target Expertise</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {activeOpportunity.tags.map(tag => (
-                        <Badge key={tag} variant="secondary" className="text-[10px] font-medium">{tag}</Badge>
-                      ))}
-                    </div>
+                  <p className="text-muted-foreground leading-relaxed">{activeOpportunity.description}</p>
+                  <div className="flex flex-wrap gap-1">
+                    {activeOpportunity.tags.map(t => <Badge key={t} variant="secondary" className="text-[10px]">{t}</Badge>)}
                   </div>
                 </CardContent>
               </Card>
@@ -566,19 +501,6 @@ function OpportunitiesContent() {
               />
             </div>
             
-            <Select value={selectedRegion} onValueChange={setSelectedRegion}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Region" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Regions</SelectItem>
-                <SelectItem value="africa">Africa</SelectItem>
-                <SelectItem value="asia">Asia</SelectItem>
-                <SelectItem value="europe">Europe</SelectItem>
-                <SelectItem value="latin">Latin America</SelectItem>
-              </SelectContent>
-            </Select>
-
             {role === 'admin' && (
               <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
                 <DialogTrigger asChild>
@@ -590,32 +512,29 @@ function OpportunitiesContent() {
                   <form onSubmit={handleCreateOpportunity}>
                     <DialogHeader>
                       <DialogTitle>Create New Opportunity</DialogTitle>
-                      <DialogDescription>Fill in the details to publish a new project for consultants.</DialogDescription>
+                      <DialogDescription>Fill in the details to publish a new project.</DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="title">Project Title</Label>
-                          <Input id="title" name="title" placeholder="e.g. Sustainable Energy Lead" required />
+                          <Input id="title" name="title" required />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="location">Location</Label>
-                          <Input id="location" name="location" placeholder="e.g. Nairobi, Kenya" required />
+                          <Input id="location" name="location" required />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="region">Region</Label>
                           <Select name="region" required>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select Region" />
-                            </SelectTrigger>
+                            <SelectTrigger><SelectValue placeholder="Select Region" /></SelectTrigger>
                             <SelectContent>
                               <SelectItem value="Africa - East">Africa - East</SelectItem>
                               <SelectItem value="Africa - West">Africa - West</SelectItem>
                               <SelectItem value="Asia & Pacific">Asia & Pacific</SelectItem>
                               <SelectItem value="Europe - Western">Europe - Western</SelectItem>
-                              <SelectItem value="Latin America">Latin America</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -626,7 +545,7 @@ function OpportunitiesContent() {
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="description">Detailed Description</Label>
-                        <Textarea id="description" name="description" rows={4} placeholder="Describe scope and requirements..." required />
+                        <Textarea id="description" name="description" rows={4} required />
                       </div>
                     </div>
                     <DialogFooter>
@@ -642,20 +561,14 @@ function OpportunitiesContent() {
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {filteredOpportunities.map((opp) => (
-            <Card key={opp.id} className="group hover:border-primary/50 transition-all shadow-sm hover:shadow-md flex flex-col">
+            <Card key={opp.id} className="group hover:border-primary/50 transition-all shadow-sm flex flex-col">
               <CardHeader className="pb-4">
                 <div className="flex justify-between items-start mb-2">
                   <Badge variant="secondary" className="bg-accent/10 text-accent-foreground border-accent/20">
                     {opp.region}
                   </Badge>
-                  {role === 'admin' && (
-                    <Badge variant="outline" className="flex items-center gap-1 font-semibold">
-                      <Users className="h-3 w-3" />
-                      {opp.applicants.length} Applicants
-                    </Badge>
-                  )}
                 </div>
-                <CardTitle className="text-xl group-hover:text-primary transition-colors line-clamp-1">{opp.title}</CardTitle>
+                <CardTitle className="text-xl line-clamp-1">{opp.title}</CardTitle>
                 <CardDescription className="flex items-center gap-1 text-xs">
                   <Calendar className="h-3 w-3" />
                   Due: {isMounted ? new Date(opp.deadline).toLocaleDateString() : opp.deadline}
@@ -663,39 +576,21 @@ function OpportunitiesContent() {
               </CardHeader>
               <CardContent className="space-y-4 flex-1">
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    {opp.location}
-                  </div>
-                  <div className="flex items-center gap-1 font-medium">
-                    <Globe className="h-4 w-4" />
-                    {opp.duration}
-                  </div>
+                  <div className="flex items-center gap-1"><MapPin className="h-4 w-4" /> {opp.location}</div>
                 </div>
-                <p className="text-sm line-clamp-2 leading-relaxed text-foreground/80">
-                  {opp.description}
-                </p>
-                <div className="flex flex-wrap gap-1.5 pt-2">
-                  {opp.tags.map((tag) => (
-                    <Badge key={tag} variant="outline" className="font-normal text-[10px] uppercase tracking-wider bg-muted/30">{tag}</Badge>
-                  ))}
+                <p className="text-sm line-clamp-2 leading-relaxed text-foreground/80">{opp.description}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {opp.tags.map((tag) => <Badge key={tag} variant="outline" className="text-[10px]">{tag}</Badge>)}
                 </div>
               </CardContent>
               <CardFooter className="pt-0 flex gap-2">
                 {role === 'admin' ? (
                   <>
-                    <Button variant="outline" className="flex-1" onClick={() => enterManageView(opp)}>
-                      Manage Apps
-                    </Button>
-                    <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    <Button variant="outline" className="flex-1" onClick={() => enterManageView(opp)}>Manage</Button>
+                    <Button variant="ghost" size="icon" onClick={() => previewPublicPage(opp.id)} title="Public Preview"><ExternalLink className="h-4 w-4" /></Button>
                   </>
                 ) : (
-                  <Button className="w-full group-hover:bg-primary transition-all">
-                    View & Apply
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
+                  <Button className="w-full" onClick={() => previewPublicPage(opp.id)}>View & Apply <ArrowRight className="ml-2 h-4 w-4" /></Button>
                 )}
               </CardFooter>
             </Card>
