@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Send, History, CheckCircle2, AlertCircle } from "lucide-react"
+import { Send, History, CircleCheck, CircleAlert } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 
 const notificationLogs = [
@@ -79,11 +79,11 @@ export default function NotificationsPage() {
                           <TableCell>
                             {log.status === "Sent" ? (
                               <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
-                                <CheckCircle2 className="h-3 w-3 mr-1" /> Sent
+                                <CircleCheck className="h-3 w-3 mr-1" /> Sent
                               </Badge>
                             ) : (
                               <Badge variant="outline" className="bg-rose-50 text-rose-700 border-rose-200">
-                                <AlertCircle className="h-3 w-3 mr-1" /> Failed
+                                <CircleAlert className="h-3 w-3 mr-1" /> Failed
                               </Badge>
                             )}
                           </TableCell>

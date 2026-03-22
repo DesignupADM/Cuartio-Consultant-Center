@@ -8,10 +8,10 @@ import { Badge } from "@/components/ui/badge"
 import { 
   Settings, 
   Users, 
-  HelpCircle, 
+  CircleHelp, 
   ShieldCheck, 
   Trash2, 
-  Edit3,
+  SquarePen,
   Plus
 } from "lucide-react"
 
@@ -66,7 +66,7 @@ export default function AdminPanelPage() {
                     <div className="flex items-center gap-4">
                        <Badge variant="outline" className="text-[10px]">{acc.role}</Badge>
                        <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="icon" className="h-8 w-8"><Edit3 className="h-3 w-3" /></Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8"><SquarePen className="h-3 w-3" /></Button>
                           <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="h-3 w-3" /></Button>
                        </div>
                     </div>
@@ -80,7 +80,7 @@ export default function AdminPanelPage() {
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
                 <CardTitle className="flex items-center gap-2">
-                  <HelpCircle className="h-5 w-5 text-primary" />
+                  <CircleHelp className="h-5 w-5 text-primary" />
                   Application Questions
                 </CardTitle>
                 <CardDescription>Modify the questions consultants answer during registration.</CardDescription>
@@ -99,7 +99,7 @@ export default function AdminPanelPage() {
                       <p className="text-[10px] text-muted-foreground">Type: {q.type}</p>
                     </div>
                     <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity">
-                      <Edit3 className="h-4 w-4" />
+                      <SquarePen className="h-4 w-4" />
                     </Button>
                   </div>
                 ))}
