@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useMemo, Suspense } from "react"
@@ -27,7 +28,10 @@ import {
   ChevronDown,
   ChevronUp,
   Settings2,
-  X
+  X,
+  MoreHorizontal,
+  CheckCircle2,
+  MessageSquare
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { 
@@ -49,8 +53,10 @@ import {
   DropdownMenuContent, 
   DropdownMenuLabel, 
   DropdownMenuSeparator, 
-  DropdownMenuTrigger 
+  DropdownMenuTrigger,
+  DropdownMenuItem
 } from "@/components/ui/dropdown-menu"
+import { Checkbox } from "@/components/ui/checkbox"
 
 type Consultant = {
   id: number;
@@ -65,18 +71,19 @@ type Consultant = {
   sector: string;
   language: string;
   bio: string;
+  status: 'verified' | 'pending' | 'rejected';
   aiInsight?: AdminCvInsightExtractionOutput;
 }
 
 const consultants: Consultant[] = [
-  { id: 1, firstName: "Alice", lastName: "Johnson", email: "alice.j@example.com", phone: "+44 20 7123 4567", lastUpdate: "2024-03-15", country: "United Kingdom", years: 12, profession: "Energy Consultant", sector: "Infrastructure", language: "English", bio: "Senior expert in renewable energy infrastructure with over a decade of experience in the UK and European markets." },
-  { id: 2, firstName: "Bernardo", lastName: "Silva", email: "b.silva@example.pt", phone: "+351 21 123 4567", lastUpdate: "2024-03-10", country: "Portugal", years: 8, profession: "Financial Advisor", sector: "Finance", language: "Portuguese", bio: "Strategic financial planner focusing on cross-border investments and fiscal policy optimization." },
-  { id: 3, firstName: "Chika", lastName: "Obi", email: "chika.obi@example.ng", phone: "+234 803 123 4567", lastUpdate: "2024-03-08", country: "Nigeria", years: 15, profession: "Legal Expert", sector: "International Law", language: "Yoruba", bio: "Specialized in international trade law and corporate governance within the African continental free trade area." },
-  { id: 4, firstName: "Dmitri", lastName: "Ivanov", email: "d.ivanov@example.ee", phone: "+372 612 3456", lastUpdate: "2024-03-01", country: "Estonia", years: 6, profession: "Software Architect", sector: "Technology", language: "Russian", bio: "Experienced architect lead for government digital transformation projects and e-residency systems." },
-  { id: 5, firstName: "Elena", lastName: "Garcia", email: "e.garcia@example.es", phone: "+34 91 123 4567", lastUpdate: "2024-02-28", country: "Spain", years: 20, profession: "Civil Engineer", sector: "Construction", language: "Spanish", bio: "Bridge and structural engineering specialist with extensive work on high-speed rail networks." },
-  { id: 6, firstName: "Fatima", lastName: "Al-Zahra", email: "f.alzahra@example.jo", phone: "+962 6 123 4567", lastUpdate: "2024-02-20", country: "Jordan", years: 10, profession: "Policy Analyst", sector: "Public Sector", language: "Arabic", bio: "Expert in socio-economic policy and Middle Eastern regional development frameworks." },
-  { id: 7, firstName: "Guillaume", lastName: "Dubois", email: "g.dubois@example.fr", phone: "+33 1 12 34 56 78", lastUpdate: "2024-02-15", country: "France", years: 4, profession: "Climate Specialist", sector: "Sustainability", language: "French", bio: "Focusing on carbon footprint reduction strategies for multinational industrial corporations." },
-  { id: 8, firstName: "Hana", lastName: "Tanaka", email: "h.tanaka@example.jp", phone: "+81 3 1234 5678", lastUpdate: "2024-02-10", country: "Japan", years: 9, profession: "Supply Chain Manager", sector: "Logistics", language: "Japanese", bio: "Specialist in lean manufacturing and global logistics resilience during supply chain disruptions." },
+  { id: 1, firstName: "Alice", lastName: "Johnson", email: "alice.j@example.com", phone: "+44 20 7123 4567", lastUpdate: "2024-03-15", country: "United Kingdom", years: 12, profession: "Energy Consultant", sector: "Infrastructure", language: "English", bio: "Senior expert in renewable energy infrastructure with over a decade of experience in the UK and European markets.", status: 'verified' },
+  { id: 2, firstName: "Bernardo", lastName: "Silva", email: "b.silva@example.pt", phone: "+351 21 123 4567", lastUpdate: "2024-03-10", country: "Portugal", years: 8, profession: "Financial Advisor", sector: "Finance", language: "Portuguese", bio: "Strategic financial planner focusing on cross-border investments and fiscal policy optimization.", status: 'pending' },
+  { id: 3, firstName: "Chika", lastName: "Obi", email: "chika.obi@example.ng", phone: "+234 803 123 4567", lastUpdate: "2024-03-08", country: "Nigeria", years: 15, profession: "Legal Expert", sector: "International Law", language: "Yoruba", bio: "Specialized in international trade law and corporate governance within the African continental free trade area.", status: 'verified' },
+  { id: 4, firstName: "Dmitri", lastName: "Ivanov", email: "d.ivanov@example.ee", phone: "+372 612 3456", lastUpdate: "2024-03-01", country: "Estonia", years: 6, profession: "Software Architect", sector: "Technology", language: "Russian", bio: "Experienced architect lead for government digital transformation projects and e-residency systems.", status: 'pending' },
+  { id: 5, firstName: "Elena", lastName: "Garcia", email: "e.garcia@example.es", phone: "+34 91 123 4567", lastUpdate: "2024-02-28", country: "Spain", years: 20, profession: "Civil Engineer", sector: "Construction", language: "Spanish", bio: "Bridge and structural engineering specialist with extensive work on high-speed rail networks.", status: 'verified' },
+  { id: 6, firstName: "Fatima", lastName: "Al-Zahra", email: "f.alzahra@example.jo", phone: "+962 6 123 4567", lastUpdate: "2024-02-20", country: "Jordan", years: 10, profession: "Policy Analyst", sector: "Public Sector", language: "Arabic", bio: "Expert in socio-economic policy and Middle Eastern regional development frameworks.", status: 'verified' },
+  { id: 7, firstName: "Guillaume", lastName: "Dubois", email: "g.dubois@example.fr", phone: "+33 1 12 34 56 78", lastUpdate: "2024-02-15", country: "France", years: 4, profession: "Climate Specialist", sector: "Sustainability", language: "French", bio: "Focusing on carbon footprint reduction strategies for multinational industrial corporations.", status: 'pending' },
+  { id: 8, firstName: "Hana", lastName: "Tanaka", email: "h.tanaka@example.jp", phone: "+81 3 1234 5678", lastUpdate: "2024-02-10", country: "Japan", years: 9, profession: "Supply Chain Manager", sector: "Logistics", language: "Japanese", bio: "Specialist in lean manufacturing and global logistics resilience during supply chain disruptions.", status: 'verified' },
 ]
 
 export default function DirectoryPage() {
@@ -93,14 +100,16 @@ function DirectoryContent() {
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const [activeConsultant, setActiveConsultant] = useState<Consultant | null>(null)
   const [showQuickFilters, setShowQuickFilters] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
   const { toast } = useToast()
 
   const [visibleColumns, setVisibleColumns] = useState({
     phone: false,
-    years: false,
+    years: true,
     sector: true,
     language: false,
-    lastUpdate: true
+    lastUpdate: true,
+    status: true
   })
 
   const filteredConsultants = useMemo(() => {
@@ -116,16 +125,21 @@ function DirectoryContent() {
 
   const handleExport = () => {
     const csvContent = "data:text/csv;charset=utf-8," 
-      + ["Name,Last Name,Last Update,Country,Profession,Sector"].join(",") + "\n"
-      + filteredConsultants.map(c => `${c.firstName},${c.lastName},${c.lastUpdate},${c.country},${c.profession},${c.sector}`).join("\n");
+      + ["Name,Last Name,Email,Country,Profession,Years Experience,Sector,Status"].join(",") + "\n"
+      + filteredConsultants.map(c => `${c.firstName},${c.lastName},${c.email},${c.country},${c.profession},${c.years},${c.sector},${c.status}`).join("\n");
     
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
     link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "consultants_export.csv");
+    link.setAttribute("download", `consultants_export_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+
+    toast({
+      title: "Export Successful",
+      description: `Exported ${filteredConsultants.length} consultants to CSV.`
+    })
   }
 
   const handleRowClick = async (consultant: Consultant) => {
@@ -149,6 +163,38 @@ function DirectoryContent() {
     }
   }
 
+  const toggleSelection = (id: number, e?: React.MouseEvent) => {
+    e?.stopPropagation()
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    )
+  }
+
+  const toggleAll = () => {
+    if (selectedIds.length === filteredConsultants.length) {
+      setSelectedIds([])
+    } else {
+      setSelectedIds(filteredConsultants.map(c => c.id))
+    }
+  }
+
+  const handleBulkMessage = () => {
+    toast({
+      title: "Bulk Action Initiated",
+      description: `Preparing to send messages to ${selectedIds.length} consultants.`
+    })
+  }
+
+  const handleVerifyProfile = (id: number) => {
+    toast({
+      title: "Profile Verified",
+      description: "Consultant status has been updated to verified."
+    })
+    if (activeConsultant?.id === id) {
+      setActiveConsultant(prev => prev ? { ...prev, status: 'verified' } : null)
+    }
+  }
+
   return (
     <DashboardLayout>
       <div className="space-y-6">
@@ -158,9 +204,34 @@ function DirectoryContent() {
             <p className="text-muted-foreground">Detailed database of global experts and consultants.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {selectedIds.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="default" className="bg-accent text-accent-foreground animate-in fade-in zoom-in-95">
+                    <MoreHorizontal className="mr-2 h-4 w-4" />
+                    Bulk Actions ({selectedIds.length})
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>Batch Operations</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleBulkMessage}>
+                    <MessageSquare className="mr-2 h-4 w-4" /> Send Message
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {}}>
+                    <CircleCheck className="mr-2 h-4 w-4" /> Mark as Verified
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="text-destructive" onClick={() => setSelectedIds([])}>
+                    Clear Selection
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
             <Button variant="outline" onClick={handleExport}>
               <Download className="mr-2 h-4 w-4" />
-              Export
+              Export CSV
             </Button>
             
             <DropdownMenu>
@@ -173,6 +244,12 @@ function DirectoryContent() {
               <DropdownMenuContent align="end" className="w-48">
                 <DropdownMenuLabel>Toggle Visibility</DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem 
+                  checked={visibleColumns.status} 
+                  onCheckedChange={(checked) => setVisibleColumns(v => ({...v, status: !!checked}))}
+                >
+                  Status
+                </DropdownMenuCheckboxItem>
                 <DropdownMenuCheckboxItem 
                   checked={visibleColumns.phone} 
                   onCheckedChange={(checked) => setVisibleColumns(v => ({...v, phone: !!checked}))}
@@ -343,24 +420,37 @@ function DirectoryContent() {
           <Table>
             <TableHeader className="bg-muted/50">
               <TableRow>
-                <TableHead>Consultant</TableHead>
+                <TableHead className="w-[40px]">
+                  <Checkbox 
+                    checked={selectedIds.length === filteredConsultants.length && filteredConsultants.length > 0}
+                    onCheckedChange={toggleAll}
+                  />
+                </TableHead>
+                <TableHead className="cursor-pointer hover:text-primary transition-colors">
+                  Consultant
+                </TableHead>
                 <TableHead>Profession</TableHead>
+                {visibleColumns.status && <TableHead>Status</TableHead>}
                 {visibleColumns.sector && <TableHead>Sector</TableHead>}
                 <TableHead>Country</TableHead>
-                {visibleColumns.phone && <TableHead>Phone</TableHead>}
-                {visibleColumns.years && <TableHead>Experience</TableHead>}
-                {visibleColumns.language && <TableHead>Language</TableHead>}
+                {visibleColumns.years && <TableHead>Exp.</TableHead>}
                 {visibleColumns.lastUpdate && <TableHead>Last Update</TableHead>}
-                <TableHead className="text-right">CV</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredConsultants.map((consultant) => (
                 <TableRow 
                   key={consultant.id} 
-                  className="hover:bg-muted/30 transition-colors cursor-pointer group"
+                  className={`hover:bg-muted/30 transition-colors cursor-pointer group ${selectedIds.includes(consultant.id) ? 'bg-primary/5' : ''}`}
                   onClick={() => handleRowClick(consultant)}
                 >
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Checkbox 
+                      checked={selectedIds.includes(consultant.id)}
+                      onCheckedChange={() => toggleSelection(consultant.id)}
+                    />
+                  </TableCell>
                   <TableCell>
                     <div className="flex flex-col">
                       <span className="font-semibold group-hover:text-primary transition-colors">
@@ -370,23 +460,43 @@ function DirectoryContent() {
                     </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{consultant.profession}</TableCell>
+                  {visibleColumns.status && (
+                    <TableCell>
+                      <Badge 
+                        variant={consultant.status === 'verified' ? 'default' : 'outline'}
+                        className={`text-[10px] uppercase tracking-wider ${consultant.status === 'verified' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-200' : ''}`}
+                      >
+                        {consultant.status}
+                      </Badge>
+                    </TableCell>
+                  )}
                   {visibleColumns.sector && <TableCell className="text-xs">{consultant.sector}</TableCell>}
                   <TableCell>
                     <Badge variant="outline" className="font-normal">{consultant.country}</Badge>
                   </TableCell>
-                  {visibleColumns.phone && <TableCell className="text-xs text-muted-foreground">{consultant.phone}</TableCell>}
-                  {visibleColumns.years && <TableCell className="text-xs">{consultant.years} yrs</TableCell>}
-                  {visibleColumns.language && <TableCell className="text-xs">{consultant.language}</TableCell>}
+                  {visibleColumns.years && <TableCell className="text-xs">{consultant.years}y</TableCell>}
                   {visibleColumns.lastUpdate && <TableCell className="text-xs text-muted-foreground">{consultant.lastUpdate}</TableCell>}
-                  <TableCell className="text-right">
-                    <Button 
-                      size="icon" 
-                      variant="ghost" 
-                      onClick={(e) => handleOpenCV(consultant.id, e)}
-                      className="h-8 w-8"
-                    >
-                      <FileText className="h-4 w-4 text-primary" />
-                    </Button>
+                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex justify-end gap-1">
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        onClick={(e) => handleOpenCV(consultant.id, e)}
+                        className="h-8 w-8"
+                        title="View CV"
+                      >
+                        <FileText className="h-4 w-4 text-primary" />
+                      </Button>
+                      <Button 
+                        size="icon" 
+                        variant="ghost" 
+                        onClick={(e) => { e.stopPropagation(); toggleSelection(consultant.id); }}
+                        className="h-8 w-8"
+                        title="Select"
+                      >
+                        <CircleCheck className={`h-4 w-4 ${selectedIds.includes(consultant.id) ? 'text-primary' : 'text-muted-foreground/30'}`} />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -399,14 +509,21 @@ function DirectoryContent() {
             {activeConsultant && (
               <div className="space-y-8 py-4">
                 <SheetHeader className="space-y-2">
-                  <div className="flex items-center gap-3">
-                    <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                      <User className="h-6 w-6" />
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                        <User className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <SheetTitle className="text-2xl">{activeConsultant.firstName} {activeConsultant.lastName}</SheetTitle>
+                        <Badge variant="secondary" className="bg-accent/10 text-accent-foreground">{activeConsultant.profession}</Badge>
+                      </div>
                     </div>
-                    <div>
-                      <SheetTitle className="text-2xl">{activeConsultant.firstName} {activeConsultant.lastName}</SheetTitle>
-                      <Badge variant="secondary" className="bg-accent/10 text-accent-foreground">{activeConsultant.profession}</Badge>
-                    </div>
+                    {activeConsultant.status !== 'verified' && (
+                      <Button size="sm" onClick={() => handleVerifyProfile(activeConsultant.id)} className="bg-emerald-600 hover:bg-emerald-700">
+                        <CircleCheck className="mr-2 h-4 w-4" /> Verify Profile
+                      </Button>
+                    )}
                   </div>
                 </SheetHeader>
 
@@ -487,10 +604,13 @@ function DirectoryContent() {
                   )}
                 </div>
 
-                <SheetFooter className="pt-6">
-                  <Button onClick={() => handleOpenCV(activeConsultant.id)} className="w-full">
+                <SheetFooter className="pt-6 flex flex-col gap-3">
+                  <Button onClick={() => handleOpenCV(activeConsultant.id)} className="w-full" variant="outline">
                     <FileText className="mr-2 h-4 w-4" />
                     Open Original CV PDF
+                  </Button>
+                  <Button className="w-full bg-primary">
+                    <Mail className="mr-2 h-4 w-4" /> Contact Consultant
                   </Button>
                 </SheetFooter>
               </div>
