@@ -9,7 +9,6 @@ import { useSearchParams } from "next/navigation"
 import { 
   Bar, 
   BarChart, 
-  ResponsiveContainer, 
   XAxis, 
   YAxis, 
   Tooltip, 
@@ -19,7 +18,7 @@ import {
   AreaChart,
   Area
 } from "recharts"
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 
 const sectorData = [
   { name: "Energy", value: 400, color: "hsl(var(--primary))" },
@@ -37,6 +36,18 @@ const trendData = [
   { month: "May", apps: 98 },
   { month: "Jun", apps: 120 },
 ]
+
+const chartConfig = {
+  apps: {
+    label: "Registrations",
+    color: "hsl(var(--primary))",
+  },
+  Energy: { label: "Energy", color: "hsl(var(--primary))" },
+  Infrastructure: { label: "Infrastructure", color: "hsl(var(--accent))" },
+  Tech: { label: "Tech", color: "hsl(var(--chart-3))" },
+  Finance: { label: "Finance", color: "hsl(var(--chart-4))" },
+  Legal: { label: "Legal", color: "hsl(var(--chart-5))" },
+} satisfies ChartConfig
 
 export default function DashboardPage() {
   const searchParams = useSearchParams()
@@ -124,22 +135,38 @@ export default function DashboardPage() {
               <CardDescription>Monthly consultant registrations across the platform.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trendData}>
-                    <defs>
-                      <linearGradient id="colorApps" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.1}/>
-                        <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="month" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                    <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
-                    <Tooltip content={<ChartTooltipContent />} />
-                    <Area type="monotone" dataKey="apps" stroke="hsl(var(--primary))" strokeWidth={2} fillOpacity={1} fill="url(#colorApps)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
+              <ChartContainer config={chartConfig} className="h-[300px] w-full">
+                <AreaChart data={trendData} margin={{ left: 12, right: 12 }}>
+                  <defs>
+                    <linearGradient id="colorApps" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <XAxis 
+                    dataKey="month" 
+                    stroke="hsl(var(--muted-foreground))" 
+                    fontSize={12} 
+                    tickLine={false} 
+                    axisLine={false} 
+                  />
+                  <YAxis 
+                    stroke="hsl(var(--muted-foreground))" 
+                    fontSize={12} 
+                    tickLine={false} 
+                    axisLine={false} 
+                  />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Area 
+                    type="monotone" 
+                    dataKey="apps" 
+                    stroke="hsl(var(--primary))" 
+                    strokeWidth={2} 
+                    fillOpacity={1} 
+                    fill="url(#colorApps)" 
+                  />
+                </AreaChart>
+              </ChartContainer>
             </CardContent>
           </Card>
 
@@ -149,26 +176,24 @@ export default function DashboardPage() {
               <CardDescription>Distribution of expertise across major industries.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={sectorData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={80}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {sectorData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
+              <ChartContainer config={chartConfig} className="h-[300px] w-full">
+                <PieChart>
+                  <Pie
+                    data={sectorData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {sectorData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <ChartTooltip content={<ChartTooltipContent hideLabel />} />
+                </PieChart>
+              </ChartContainer>
               <div className="grid grid-cols-2 gap-2 mt-4">
                 {sectorData.map((s) => (
                   <div key={s.name} className="flex items-center gap-2">
