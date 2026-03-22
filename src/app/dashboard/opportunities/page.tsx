@@ -29,7 +29,8 @@ import {
   ChevronRight,
   User as UserIcon,
   MoreHorizontal,
-  Briefcase
+  Briefcase,
+  FileText
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
@@ -60,7 +61,8 @@ import {
   DropdownMenu, 
   DropdownMenuContent, 
   DropdownMenuItem, 
-  DropdownMenuTrigger 
+  DropdownMenuTrigger,
+  DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu"
 
 type Applicant = {
@@ -222,7 +224,6 @@ function OpportunitiesContent() {
     return (
       <DashboardLayout>
         <div className="space-y-8 animate-in fade-in duration-500">
-          {/* Header Section */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="flex items-center gap-4">
               <Button variant="outline" size="icon" onClick={() => setViewMode('list')} className="rounded-full h-10 w-10 hover:bg-muted/50 border-primary/20">
@@ -245,7 +246,7 @@ function OpportunitiesContent() {
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
                 <Share2 className="h-4 w-4 mr-2" /> Share
               </Button>
-              <Button variant="primary" size="sm" className="bg-primary shadow-lg shadow-primary/20" asChild>
+              <Button variant="outline" size="sm" className="bg-primary/5 shadow-sm" asChild>
                 <a href={`/public/opportunities/${activeOpportunity.id}`} target="_blank">
                   <ExternalLink className="h-4 w-4 mr-2" /> Public View
                 </a>
@@ -253,7 +254,6 @@ function OpportunitiesContent() {
             </div>
           </div>
 
-          {/* Quick Stats Grid */}
           <div className="grid gap-6 md:grid-cols-4">
             <Card className="shadow-sm border-none ring-1 ring-border bg-card/50 backdrop-blur-sm">
               <CardContent className="p-6 flex items-center justify-between">
@@ -299,7 +299,6 @@ function OpportunitiesContent() {
           </div>
 
           <div className="grid lg:grid-cols-3 gap-8">
-            {/* Main Column */}
             <div className="lg:col-span-2 space-y-8">
               <Card className="shadow-sm border-none ring-1 ring-border overflow-hidden">
                 <CardHeader className="bg-muted/30 border-b flex flex-row items-center justify-between space-y-0 py-4">
@@ -340,7 +339,6 @@ function OpportunitiesContent() {
                           <div className="flex flex-col items-center justify-center text-muted-foreground gap-2">
                             <Users className="h-10 w-10 opacity-20" />
                             <p className="text-sm font-medium">No applicants registered for this project yet.</p>
-                            <Button variant="link" className="text-primary text-xs">Share Public Page to Attract Experts</Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -466,7 +464,6 @@ function OpportunitiesContent() {
               )}
             </div>
 
-            {/* Sidebar Column */}
             <div className="space-y-8">
               <Card className="shadow-sm border-none ring-1 ring-border bg-card/80">
                 <CardHeader className="pb-4">
@@ -500,22 +497,7 @@ function OpportunitiesContent() {
                       </div>
                     </div>
                   </div>
-                  <div className="space-y-3 pt-2">
-                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Sector Keywords</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {activeOpportunity.tags.map((tag, i) => (
-                        <Badge key={i} variant="outline" className="text-[10px] font-bold px-2 py-0.5 border-primary/20 text-primary">
-                          {tag}
-                        </Badge>
-                      ))}
-                    </div>
-                  </div>
                 </CardContent>
-                <CardFooter className="bg-muted/30 border-t py-4">
-                  <Button variant="outline" className="w-full text-xs font-bold border-primary/10 hover:border-primary/40 hover:bg-primary/5">
-                    Update Project Details
-                  </Button>
-                </CardFooter>
               </Card>
 
               <Card className="shadow-lg border-none ring-1 ring-accent/30 bg-accent/5 overflow-hidden">
@@ -528,12 +510,6 @@ function OpportunitiesContent() {
                 <CardContent className="space-y-3">
                   <Button variant="outline" className="w-full justify-start text-xs font-bold h-11 border-accent/20 bg-background hover:bg-accent/10">
                     <Mail className="h-4 w-4 mr-3 text-accent" /> Email All Shortlisted
-                  </Button>
-                  <Button variant="outline" className="w-full justify-start text-xs font-bold h-11 border-accent/20 bg-background hover:bg-accent/10">
-                    <Mail className="h-4 w-4 mr-3 text-accent" /> Status Update: Under Review
-                  </Button>
-                  <Button variant="outline" className="w-full justify-start text-xs font-bold h-11 border-accent/20 bg-background hover:bg-accent/10">
-                    <Mail className="h-4 w-4 mr-3 text-accent" /> Reach Out to Unsuccessful
                   </Button>
                 </CardContent>
               </Card>
@@ -628,7 +604,6 @@ function OpportunitiesContent() {
               </div>
               <h3 className="text-2xl font-bold text-foreground">No matching projects</h3>
               <p className="text-muted-foreground font-medium mt-2">Try adjusting your search query or post a new opportunity.</p>
-              <Button variant="link" className="text-primary mt-4 font-bold" onClick={() => setSearchQuery("")}>Clear Search Filters</Button>
             </div>
           ) : (
             filteredOpportunities.map(opp => (
@@ -670,11 +645,6 @@ function OpportunitiesContent() {
                 <CardFooter className="pt-3 border-t bg-muted/20 px-4 py-3 mt-4 flex gap-2">
                   <Button className="flex-1 bg-primary/95 hover:bg-primary shadow-sm font-black text-xs uppercase tracking-wider" onClick={() => enterManageView(opp)}>
                     Manage Hub <ChevronRight className="h-4 w-4 ml-1.5" />
-                  </Button>
-                  <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-primary hover:bg-white rounded-lg h-10 w-10" asChild>
-                    <a href={`/public/opportunities/${opp.id}`} target="_blank">
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
                   </Button>
                 </CardFooter>
               </Card>
