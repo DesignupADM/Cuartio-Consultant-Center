@@ -23,7 +23,11 @@ import {
   Globe,
   Briefcase,
   User,
-  CalendarDays
+  CalendarDays,
+  ChevronDown,
+  ChevronUp,
+  Settings2,
+  X
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { 
@@ -39,6 +43,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { adminCvInsightExtraction, AdminCvInsightExtractionOutput } from "@/ai/flows/admin-cv-insight-extraction"
 import { useToast } from "@/hooks/use-toast"
 import { Separator } from "@/components/ui/separator"
+import { 
+  DropdownMenu, 
+  DropdownMenuCheckboxItem, 
+  DropdownMenuContent, 
+  DropdownMenuLabel, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu"
 
 type Consultant = {
   id: number;
@@ -80,11 +92,20 @@ function DirectoryContent() {
   const [isInsightLoading, setIsInsightLoading] = useState(false)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const [activeConsultant, setActiveConsultant] = useState<Consultant | null>(null)
+  const [showQuickFilters, setShowQuickFilters] = useState(false)
   const { toast } = useToast()
+
+  const [visibleColumns, setVisibleColumns] = useState({
+    phone: false,
+    years: false,
+    sector: true,
+    language: false,
+    lastUpdate: true
+  })
 
   const filteredConsultants = useMemo(() => {
     return consultants.filter(c => 
-      `${c.firstName} ${c.lastName} ${c.profession} ${c.country}`.toLowerCase().includes(searchQuery.toLowerCase())
+      `${c.firstName} ${c.lastName} ${c.profession} ${c.country} ${c.sector}`.toLowerCase().includes(searchQuery.toLowerCase())
     )
   }, [searchQuery])
 
@@ -95,8 +116,8 @@ function DirectoryContent() {
 
   const handleExport = () => {
     const csvContent = "data:text/csv;charset=utf-8," 
-      + ["Name,Last Name,Last Update,Country,Profession"].join(",") + "\n"
-      + filteredConsultants.map(c => `${c.firstName},${c.lastName},${c.lastUpdate},${c.country},${c.profession}`).join("\n");
+      + ["Name,Last Name,Last Update,Country,Profession,Sector"].join(",") + "\n"
+      + filteredConsultants.map(c => `${c.firstName},${c.lastName},${c.lastUpdate},${c.country},${c.profession},${c.sector}`).join("\n");
     
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement("a");
@@ -136,84 +157,186 @@ function DirectoryContent() {
             <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Consultant Directory</h1>
             <p className="text-muted-foreground">Detailed database of global experts and consultants.</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={handleExport}>
               <Download className="mr-2 h-4 w-4" />
-              Export to Excel
+              Export
             </Button>
+            
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Settings2 className="mr-2 h-4 w-4" />
+                  Columns
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel>Toggle Visibility</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuCheckboxItem 
+                  checked={visibleColumns.phone} 
+                  onCheckedChange={(checked) => setVisibleColumns(v => ({...v, phone: !!checked}))}
+                >
+                  Phone Number
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem 
+                  checked={visibleColumns.years} 
+                  onCheckedChange={(checked) => setVisibleColumns(v => ({...v, years: !!checked}))}
+                >
+                  Experience (Years)
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem 
+                  checked={visibleColumns.sector} 
+                  onCheckedChange={(checked) => setVisibleColumns(v => ({...v, sector: !!checked}))}
+                >
+                  Sector
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem 
+                  checked={visibleColumns.language} 
+                  onCheckedChange={(checked) => setVisibleColumns(v => ({...v, language: !!checked}))}
+                >
+                  Primary Language
+                </DropdownMenuCheckboxItem>
+                <DropdownMenuCheckboxItem 
+                  checked={visibleColumns.lastUpdate} 
+                  onCheckedChange={(checked) => setVisibleColumns(v => ({...v, lastUpdate: !!checked}))}
+                >
+                  Last Update
+                </DropdownMenuCheckboxItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
             <Sheet>
               <SheetTrigger asChild>
                 <Button variant="outline" className="relative">
                   <Filter className="mr-2 h-4 w-4" />
-                  Advanced Filters
-                  <Badge className="ml-2 bg-accent text-accent-foreground">3</Badge>
+                  More Filters
                 </Button>
               </SheetTrigger>
               <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
                 <SheetHeader>
-                  <SheetTitle>Filters</SheetTitle>
+                  <SheetTitle>Advanced Filters</SheetTitle>
                 </SheetHeader>
                 <div className="grid gap-6 py-6">
                   <div className="space-y-4">
-                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">General</h3>
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Language & Communication</h3>
                     <div className="space-y-2">
-                      <Label>Country of Residence</Label>
+                      <Label>Languages</Label>
                       <Select>
-                        <SelectTrigger><SelectValue placeholder="Select Country" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="uk">United Kingdom</SelectItem>
-                          <SelectItem value="pt">Portugal</SelectItem>
-                          <SelectItem value="ng">Nigeria</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Min Experience (Years)</Label>
-                      <Input type="number" placeholder="Years" />
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 border-t pt-4">
-                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Languages</h3>
-                    <Select>
                         <SelectTrigger><SelectValue placeholder="Select Languages" /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value="en">English</SelectItem>
                           <SelectItem value="es">Spanish</SelectItem>
                           <SelectItem value="fr">French</SelectItem>
+                          <SelectItem value="pt">Portuguese</SelectItem>
+                          <SelectItem value="ar">Arabic</SelectItem>
                         </SelectContent>
                       </Select>
+                    </div>
                   </div>
 
                   <div className="space-y-4 border-t pt-4">
-                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Sectors</h3>
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Profile Details</h3>
                     <div className="space-y-2">
-                      <Label>Expertise Search</Label>
-                      <Input placeholder="e.g. Energy, Finance..." />
+                      <Label>Keywords in Bio</Label>
+                      <Input placeholder="e.g. 'renewable', 'legal', 'policy'..." />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Last Updated After</Label>
+                      <Input type="date" />
                     </div>
                   </div>
                 </div>
-                <SheetFooter>
-                  <Button className="w-full bg-primary">Apply Filters</Button>
+                <SheetFooter className="flex flex-col gap-2">
+                  <Button className="w-full bg-primary">Apply Advanced Filters</Button>
+                  <Button variant="ghost" className="w-full text-muted-foreground">Clear All</Button>
                 </SheetFooter>
               </SheetContent>
             </Sheet>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 bg-card p-4 rounded-xl border shadow-sm">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search by name, country, or profession..." 
-              className="pl-9 bg-muted/20"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+        <div className="space-y-4">
+          <div className="flex items-center gap-4 bg-card p-4 rounded-xl border shadow-sm">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input 
+                placeholder="Search by name, country, or profession..." 
+                className="pl-9 bg-muted/20"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            <Button 
+              variant={showQuickFilters ? "secondary" : "outline"} 
+              onClick={() => setShowQuickFilters(!showQuickFilters)}
+              className="gap-2"
+            >
+              <Filter className="h-4 w-4" />
+              Quick Filters
+              {showQuickFilters ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </Button>
+            <div className="text-sm font-medium text-muted-foreground border-l pl-4 hidden sm:block">
+              <span className="text-primary font-bold">{filteredConsultants.length}</span> Results
+            </div>
           </div>
-          <div className="text-sm font-medium text-muted-foreground border-l pl-4 hidden sm:block">
-            <span className="text-primary font-bold">{filteredConsultants.length}</span> Results
-          </div>
+
+          {showQuickFilters && (
+            <div className="bg-card p-6 rounded-xl border shadow-sm animate-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-sm flex items-center gap-2">
+                  <Filter className="h-4 w-4 text-primary" />
+                  Core Filter Criteria
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => setShowQuickFilters(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Country</Label>
+                  <Select>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="All Countries" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="uk">United Kingdom</SelectItem>
+                      <SelectItem value="pt">Portugal</SelectItem>
+                      <SelectItem value="ng">Nigeria</SelectItem>
+                      <SelectItem value="ee">Estonia</SelectItem>
+                      <SelectItem value="es">Spain</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Sector / Area</Label>
+                  <Select>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="All Sectors" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="infra">Infrastructure</SelectItem>
+                      <SelectItem value="finance">Finance</SelectItem>
+                      <SelectItem value="law">Law</SelectItem>
+                      <SelectItem value="tech">Technology</SelectItem>
+                      <SelectItem value="energy">Energy</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Min. Experience</Label>
+                  <Select>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Any" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">5+ Years</SelectItem>
+                      <SelectItem value="10">10+ Years</SelectItem>
+                      <SelectItem value="15">15+ Years</SelectItem>
+                      <SelectItem value="20">20+ Years</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-end">
+                  <Button className="w-full h-9 bg-primary/90 hover:bg-primary">Apply</Button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
@@ -222,8 +345,12 @@ function DirectoryContent() {
               <TableRow>
                 <TableHead>Consultant</TableHead>
                 <TableHead>Profession</TableHead>
+                {visibleColumns.sector && <TableHead>Sector</TableHead>}
                 <TableHead>Country</TableHead>
-                <TableHead>Last Update</TableHead>
+                {visibleColumns.phone && <TableHead>Phone</TableHead>}
+                {visibleColumns.years && <TableHead>Experience</TableHead>}
+                {visibleColumns.language && <TableHead>Language</TableHead>}
+                {visibleColumns.lastUpdate && <TableHead>Last Update</TableHead>}
                 <TableHead className="text-right">CV</TableHead>
               </TableRow>
             </TableHeader>
@@ -243,10 +370,14 @@ function DirectoryContent() {
                     </div>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{consultant.profession}</TableCell>
+                  {visibleColumns.sector && <TableCell className="text-xs">{consultant.sector}</TableCell>}
                   <TableCell>
                     <Badge variant="outline" className="font-normal">{consultant.country}</Badge>
                   </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{consultant.lastUpdate}</TableCell>
+                  {visibleColumns.phone && <TableCell className="text-xs text-muted-foreground">{consultant.phone}</TableCell>}
+                  {visibleColumns.years && <TableCell className="text-xs">{consultant.years} yrs</TableCell>}
+                  {visibleColumns.language && <TableCell className="text-xs">{consultant.language}</TableCell>}
+                  {visibleColumns.lastUpdate && <TableCell className="text-xs text-muted-foreground">{consultant.lastUpdate}</TableCell>}
                   <TableCell className="text-right">
                     <Button 
                       size="icon" 
