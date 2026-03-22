@@ -49,6 +49,19 @@
         "consultantEmail": { "type": "string" }
       },
       "required": ["consultantId", "opportunityId", "status"]
+    },
+    "RegistrationQuestion": {
+      "title": "RegistrationQuestion",
+      "description": "A dynamic question added to the consultant registration form.",
+      "type": "object",
+      "properties": {
+        "label": { "type": "string" },
+        "type": { "type": "string", "enum": ["text", "textarea", "select"] },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "required": { "type": "boolean" },
+        "order": { "type": "number" }
+      },
+      "required": ["label", "type"]
     }
   },
   "auth": {
@@ -66,6 +79,10 @@
     "/opportunities/{opportunityId}/applicants/{applicationId}": {
       "schema": { "$ref": "#/entities/Application" },
       "description": "Applications submitted for a specific opportunity."
+    },
+    "/settings/registration/questions/{questionId}": {
+      "schema": { "$ref": "#/entities/RegistrationQuestion" },
+      "description": "Dynamic custom questions for the registration form."
     }
   }
 }
