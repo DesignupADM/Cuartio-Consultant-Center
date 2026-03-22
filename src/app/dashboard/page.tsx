@@ -3,15 +3,23 @@
 
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Users, Briefcase, Database, Bell, ArrowUpRight, TrendingUp, Sparkles, Clock, Globe } from "lucide-react"
+import { 
+  Users, 
+  Briefcase, 
+  Database, 
+  Bell, 
+  ArrowUpRight, 
+  TrendingUp, 
+  Sparkles, 
+  Clock, 
+  Globe,
+  ChevronRight 
+} from "lucide-react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
 import { 
-  Bar, 
-  BarChart, 
   XAxis, 
   YAxis, 
-  Tooltip, 
   Cell, 
   PieChart, 
   Pie,
@@ -20,6 +28,7 @@ import {
 } from "recharts"
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
 
 const sectorData = [
   { name: "Energy", value: 400, color: "hsl(var(--primary))" },
