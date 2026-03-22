@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useMemo, useEffect, Suspense } from "react"
+import { useState, useMemo, useEffect, Suspense, useCallback } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,12 +10,9 @@ import {
   Globe, 
   MapPin, 
   Calendar, 
-  ArrowRight, 
   Plus, 
   Users, 
   Search, 
-  CircleCheck, 
-  CircleX, 
   Sparkles,
   Loader2,
   ChevronLeft,
@@ -64,18 +61,22 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu"
+import { useFirestore, useCollection } from "@/firebase"
+import { collection, addDoc, updateDoc, doc, serverTimestamp, query, orderBy } from "firebase/firestore"
+import { errorEmitter } from "@/firebase/error-emitter"
+import { FirestorePermissionError } from "@/firebase/errors"
 
 type Applicant = {
-  id: number;
+  id: string;
   name: string;
   email: string;
   status: 'applied' | 'accepted' | 'declined';
-  appliedDate: string;
+  appliedDate: any;
   location: string;
 }
 
 type Opportunity = {
-  id: number;
+  id: string;
   title: string;
   location: string;
   region: string;
@@ -84,73 +85,43 @@ type Opportunity = {
   description: string;
   tags: string[];
   status: 'open' | 'closed' | 'draft';
-  applicants: Applicant[];
 }
-
-const initialOpportunities: Opportunity[] = [
-  {
-    id: 1,
-    title: "Senior Environmental Impact Consultant",
-    location: "Nairobi, Kenya",
-    region: "Africa - East",
-    duration: "6 Months",
-    deadline: "2024-12-10",
-    description: "Seeking an expert to lead the environmental assessment for a major reforestation initiative in the Great Rift Valley.",
-    tags: ["Environment", "Sustainability", "EIA"],
-    status: 'open',
-    applicants: [
-      { id: 101, name: "Alice Johnson", email: "alice.j@example.com", status: 'applied', appliedDate: "2024-03-15", location: "UK" },
-      { id: 102, name: "Bernardo Silva", email: "b.silva@example.pt", status: 'accepted', appliedDate: "2024-03-16", location: "Portugal" },
-      { id: 103, name: "Elena Garcia", email: "e.garcia@example.es", status: 'declined', appliedDate: "2024-03-10", location: "Spain" },
-      { id: 104, name: "Dmitri Ivanov", email: "d.ivanov@example.ee", status: 'applied', appliedDate: "2024-03-18", location: "Estonia" },
-    ]
-  },
-  {
-    id: 2,
-    title: "Digital Transformation Lead",
-    location: "Bangkok, Thailand",
-    region: "Asia and Pacific",
-    duration: "12 Months",
-    deadline: "2024-12-25",
-    description: "Oversee the implementation of a new e-government framework for municipal administrations across northern Thailand.",
-    tags: ["Tech", "Governance", "Strategy"],
-    status: 'open',
-    applicants: [
-      { id: 105, name: "Hana Tanaka", email: "h.tanaka@example.jp", status: 'applied', appliedDate: "2024-03-19", location: "Japan" },
-    ]
-  }
-]
 
 function OpportunitiesContent() {
   const searchParams = useSearchParams()
   const role = (searchParams.get("role") as "admin" | "consultant") || "admin"
   const { toast } = useToast()
+  const db = useFirestore()
 
-  const [opportunities, setOpportunities] = useState<Opportunity[]>(initialOpportunities)
+  const oppsQuery = useMemo(() => query(collection(db, "opportunities"), orderBy("createdAt", "desc")), [db])
+  const { data: opportunities, loading: oppsLoading } = useCollection<Opportunity>(oppsQuery)
+
   const [searchQuery, setSearchQuery] = useState("")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [viewMode, setViewMode] = useState<'list' | 'manage'>('list')
   const [activeOpportunity, setActiveOpportunity] = useState<Opportunity | null>(null)
+  
+  const applicantsQuery = useMemo(() => {
+    if (!activeOpportunity) return null
+    return collection(db, "opportunities", activeOpportunity.id, "applicants")
+  }, [db, activeOpportunity])
+  
+  const { data: applicants, loading: applicantsLoading } = useCollection<Applicant>(applicantsQuery)
+
   const [isMatching, setIsMatching] = useState(false)
   const [aiMatches, setAiMatches] = useState<MatchConsultantsOutput | null>(null)
-  const [isMounted, setIsMounted] = useState(false)
-
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
 
   const filteredOpportunities = useMemo(() => {
-    return opportunities.filter(opp => 
+    return (opportunities || []).filter(opp => 
       opp.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
       opp.description.toLowerCase().includes(searchQuery.toLowerCase())
     )
   }, [opportunities, searchQuery])
 
-  const handleCreateOpportunity = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleCreateOpportunity = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const formData = new FormData(e.currentTarget)
-    const newOpp: Opportunity = {
-      id: Date.now(),
+    const newOpp = {
       title: formData.get("title") as string,
       location: formData.get("location") as string,
       region: formData.get("region") as string,
@@ -159,18 +130,41 @@ function OpportunitiesContent() {
       description: formData.get("description") as string,
       tags: (formData.get("tags") as string).split(",").map(t => t.trim()),
       status: 'open',
-      applicants: []
+      createdAt: serverTimestamp()
     }
-    setOpportunities([newOpp, ...opportunities])
-    setIsCreateDialogOpen(false)
-    toast({ title: "Opportunity Created" })
+
+    addDoc(collection(db, "opportunities"), newOpp)
+      .then(() => {
+        setIsCreateDialogOpen(false)
+        toast({ title: "Opportunity Created" })
+      })
+      .catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: 'opportunities',
+          operation: 'create',
+          requestResourceData: newOpp
+        }))
+      })
   }
 
-  const enterManageView = (opp: Opportunity) => {
-    setActiveOpportunity(opp)
-    setAiMatches(null)
-    setViewMode('manage')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+  const updateApplicantStatus = (applicantId: string, newStatus: Applicant['status']) => {
+    if (!activeOpportunity) return
+    const appRef = doc(db, "opportunities", activeOpportunity.id, "applicants", applicantId)
+    
+    updateDoc(appRef, { status: newStatus })
+      .then(() => {
+        toast({ 
+          title: "Status Updated", 
+          description: `Candidate moved to ${newStatus === 'accepted' ? 'Shortlisted' : newStatus}.` 
+        })
+      })
+      .catch(async (err) => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
+          path: appRef.path,
+          operation: 'update',
+          requestResourceData: { status: newStatus }
+        }))
+      })
   }
 
   const handleAIMatch = async () => {
@@ -179,10 +173,14 @@ function OpportunitiesContent() {
     try {
       const result = await matchConsultants({
         opportunityDescription: activeOpportunity.description,
-        consultants: [
-          { id: 1, name: "Alice Johnson", profession: "Expert", sector: "Infra", years: 12, bio: "Senior expert in environmental impact." },
-          { id: 2, name: "Bernardo Silva", profession: "Advisor", sector: "Finance", years: 8, bio: "Financial advisor with strategic focus." }
-        ]
+        consultants: (applicants || []).map(a => ({
+          id: parseInt(a.id) || 0,
+          name: a.name,
+          profession: "Consultant",
+          sector: "Various",
+          years: 5,
+          bio: ""
+        }))
       })
       setAiMatches(result)
       toast({ title: "AI Analysis Complete" })
@@ -193,32 +191,11 @@ function OpportunitiesContent() {
     }
   }
 
-  const updateApplicantStatus = (applicantId: number, newStatus: Applicant['status']) => {
-    if (!activeOpportunity) return
-    setOpportunities(prev => prev.map(opp => {
-      if (opp.id === activeOpportunity.id) {
-        return {
-          ...opp,
-          applicants: opp.applicants.map(app => app.id === applicantId ? { ...app, status: newStatus } : app)
-        }
-      }
-      return opp
-    }))
-    setActiveOpportunity(prev => prev ? {
-      ...prev,
-      applicants: prev.applicants.map(app => app.id === applicantId ? { ...app, status: newStatus } : app)
-    } : null)
-    toast({ 
-      title: "Status Updated", 
-      description: `Candidate moved to ${newStatus === 'accepted' ? 'Shortlisted' : newStatus}.` 
-    })
-  }
-
   if (viewMode === 'manage' && activeOpportunity) {
     const stats = {
-      applied: activeOpportunity.applicants.filter(a => a.status === 'applied').length,
-      accepted: activeOpportunity.applicants.filter(a => a.status === 'accepted').length,
-      declined: activeOpportunity.applicants.filter(a => a.status === 'declined').length,
+      applied: (applicants || []).filter(a => a.status === 'applied').length,
+      accepted: (applicants || []).filter(a => a.status === 'accepted').length,
+      declined: (applicants || []).filter(a => a.status === 'declined').length,
     }
 
     return (
@@ -246,27 +223,22 @@ function OpportunitiesContent() {
               <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
                 <Share2 className="h-4 w-4 mr-2" /> Share
               </Button>
-              <Button variant="outline" size="sm" className="bg-primary/5 shadow-sm" asChild>
-                <a href={`/public/opportunities/${activeOpportunity.id}`} target="_blank">
-                  <ExternalLink className="h-4 w-4 mr-2" /> Public View
-                </a>
-              </Button>
             </div>
           </div>
 
           <div className="grid gap-6 md:grid-cols-4">
-            <Card className="shadow-sm border-none ring-1 ring-border bg-card/50 backdrop-blur-sm">
+            <Card>
               <CardContent className="p-6 flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-1">Total Applicants</p>
-                  <p className="text-3xl font-bold text-foreground">{activeOpportunity.applicants.length}</p>
+                  <p className="text-3xl font-bold text-foreground">{applicants?.length || 0}</p>
                 </div>
                 <div className="h-12 w-12 rounded-xl bg-primary/5 flex items-center justify-center text-primary">
                   <Users className="h-6 w-6" />
                 </div>
               </CardContent>
             </Card>
-            <Card className="shadow-sm border-none ring-1 ring-emerald-100 bg-emerald-50/10">
+            <Card className="ring-1 ring-emerald-100 bg-emerald-50/10">
               <CardContent className="p-6 flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-black uppercase text-emerald-600 tracking-widest mb-1">Shortlisted</p>
@@ -277,7 +249,7 @@ function OpportunitiesContent() {
                 </div>
               </CardContent>
             </Card>
-            <Card className="shadow-sm border-none ring-1 ring-amber-100 bg-amber-50/10">
+            <Card className="ring-1 ring-amber-100 bg-amber-50/10">
               <CardContent className="p-6 flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-black uppercase text-amber-600 tracking-widest mb-1">Under Review</p>
@@ -291,7 +263,7 @@ function OpportunitiesContent() {
             <Button 
               className="h-full bg-accent hover:bg-accent/90 text-accent-foreground shadow-lg shadow-accent/20 border-none font-black text-xs tracking-wider uppercase transition-all hover:-translate-y-0.5" 
               onClick={handleAIMatch} 
-              disabled={isMatching}
+              disabled={isMatching || !applicants?.length}
             >
               {isMatching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
               Generate Match Rankings
@@ -309,19 +281,6 @@ function OpportunitiesContent() {
                     </CardTitle>
                     <CardDescription className="text-xs">Review and manage consultant submissions for this project.</CardDescription>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Select defaultValue="all">
-                      <SelectTrigger className="h-8 w-[140px] text-xs">
-                        <SelectValue placeholder="All Statuses" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All Applicants</SelectItem>
-                        <SelectItem value="applied">Under Review</SelectItem>
-                        <SelectItem value="accepted">Shortlisted</SelectItem>
-                        <SelectItem value="declined">Declined</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </CardHeader>
                 <Table>
                   <TableHeader className="bg-muted/10">
@@ -333,17 +292,12 @@ function OpportunitiesContent() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {activeOpportunity.applicants.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={4} className="h-48 text-center">
-                          <div className="flex flex-col items-center justify-center text-muted-foreground gap-2">
-                            <Users className="h-10 w-10 opacity-20" />
-                            <p className="text-sm font-medium">No applicants registered for this project yet.</p>
-                          </div>
-                        </TableCell>
-                      </TableRow>
+                    {applicantsLoading ? (
+                      <TableRow><TableCell colSpan={4} className="h-48 text-center">Loading applicants...</TableCell></TableRow>
+                    ) : (applicants || []).length === 0 ? (
+                      <TableRow><TableCell colSpan={4} className="h-48 text-center">No applicants yet.</TableCell></TableRow>
                     ) : (
-                      activeOpportunity.applicants.map(app => (
+                      applicants?.map(app => (
                         <TableRow key={app.id} className="group transition-colors hover:bg-muted/20">
                           <TableCell className="py-4">
                             <div className="flex items-center gap-3">
@@ -372,7 +326,6 @@ function OpportunitiesContent() {
                                 variant="ghost" 
                                 className="h-8 w-8 p-0 text-emerald-600 hover:bg-emerald-50 rounded-full" 
                                 onClick={() => updateApplicantStatus(app.id, 'accepted')}
-                                title="Shortlist"
                               >
                                 <UserCheck className="h-4 w-4" />
                               </Button>
@@ -381,17 +334,8 @@ function OpportunitiesContent() {
                                 variant="ghost" 
                                 className="h-8 w-8 p-0 text-rose-600 hover:bg-rose-50 rounded-full" 
                                 onClick={() => updateApplicantStatus(app.id, 'declined')}
-                                title="Decline"
                               >
                                 <UserX className="h-4 w-4" />
-                              </Button>
-                              <Button 
-                                size="sm" 
-                                variant="ghost" 
-                                className="h-8 w-8 p-0 text-primary hover:bg-primary/5 rounded-full"
-                                title="Send Direct Message"
-                              >
-                                <Mail className="h-4 w-4" />
                               </Button>
                               <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
@@ -399,9 +343,8 @@ function OpportunitiesContent() {
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-48">
                                   <DropdownMenuItem className="text-xs font-bold"><UserIcon className="h-3.5 w-3.5 mr-2" /> View Detailed Profile</DropdownMenuItem>
-                                  <DropdownMenuItem className="text-xs font-bold"><Globe className="h-3.5 w-3.5 mr-2" /> Check Availability</DropdownMenuItem>
                                   <DropdownMenuSeparator />
-                                  <DropdownMenuItem className="text-xs font-bold text-rose-600"><UserX className="h-3.5 w-3.5 mr-2" /> Remove from Project</DropdownMenuItem>
+                                  <DropdownMenuItem className="text-xs font-bold text-rose-600"><UserX className="h-3.5 w-3.5 mr-2" /> Remove</DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>
                             </div>
@@ -415,46 +358,20 @@ function OpportunitiesContent() {
 
               {aiMatches && (
                 <Card className="bg-primary shadow-xl border-none text-primary-foreground overflow-hidden relative group">
-                  <div className="absolute top-0 right-0 p-12 opacity-5 group-hover:opacity-10 transition-opacity">
-                    <Sparkles className="h-48 w-48" />
-                  </div>
-                  <CardHeader className="relative z-10">
-                    <div className="flex items-center justify-between">
-                      <div className="space-y-1">
-                        <CardTitle className="flex items-center gap-2 text-2xl font-headline tracking-tight">
-                          <Sparkles className="h-6 w-6 text-accent animate-pulse" />
-                          AI Match Insights
-                        </CardTitle>
-                        <CardDescription className="text-primary-foreground/70 font-medium">
-                          Automated ranking based on technical skill synthesis and sector compatibility.
-                        </CardDescription>
-                      </div>
-                      <Badge className="bg-accent text-accent-foreground font-black tracking-tighter px-4 py-1.5 border-none shadow-lg">
-                        HIGH CONFIDENCE MATCH
-                      </Badge>
-                    </div>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-2xl font-headline tracking-tight">
+                      <Sparkles className="h-6 w-6 text-accent animate-pulse" />
+                      AI Match Insights
+                    </CardTitle>
                   </CardHeader>
-                  <CardContent className="grid gap-4 relative z-10 pb-8">
+                  <CardContent className="grid gap-4">
                     {aiMatches.matches.map(m => (
-                      <div key={m.consultantId} className="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/20 hover:bg-white/15 transition-all hover:scale-[1.01] shadow-lg">
+                      <div key={m.consultantId} className="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/20">
                         <div className="flex justify-between items-center mb-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-11 w-11 rounded-2xl bg-accent/20 flex items-center justify-center border border-accent/40 text-accent font-black shadow-inner">
-                              {m.consultantId}
-                            </div>
-                            <div>
-                              <span className="font-black text-sm uppercase tracking-widest text-accent">Top Recommendation</span>
-                              <h4 className="font-bold text-lg leading-tight">Consultant #{m.consultantId} Profile</h4>
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-[10px] font-black uppercase text-accent/80 tracking-widest block mb-0.5">Match Score</span>
-                            <span className="text-3xl font-black text-white leading-none">
-                              {m.matchScore}%
-                            </span>
-                          </div>
+                          <h4 className="font-bold text-lg">Consultant ID: {m.consultantId}</h4>
+                          <span className="text-3xl font-black text-white">{m.matchScore}%</span>
                         </div>
-                        <p className="text-sm text-white/90 leading-relaxed border-l-4 border-accent pl-5 italic font-medium py-1">
+                        <p className="text-sm text-white/90 leading-relaxed italic border-l-4 border-accent pl-5">
                           "{m.reasoning}"
                         </p>
                       </div>
@@ -466,51 +383,24 @@ function OpportunitiesContent() {
 
             <div className="space-y-8">
               <Card className="shadow-sm border-none ring-1 ring-border bg-card/80">
-                <CardHeader className="pb-4">
+                <CardHeader>
                   <CardTitle className="text-base font-black uppercase tracking-widest text-primary flex items-center gap-2">
                     <FileText className="h-4 w-4" />
                     Project Scope
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <p className="text-sm leading-relaxed text-foreground/80 font-medium">{activeOpportunity.description}</p>
-                  </div>
+                  <p className="text-sm leading-relaxed text-foreground/80 font-medium">{activeOpportunity.description}</p>
                   <Separator />
                   <div className="grid grid-cols-1 gap-5">
                     <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                        <Calendar className="h-4 w-4" />
-                      </div>
+                      <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary"><Calendar className="h-4 w-4" /></div>
                       <div>
                         <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Deadline</p>
                         <p className="text-sm font-bold">{activeOpportunity.deadline}</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
-                        <Clock className="h-4 w-4" />
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Duration</p>
-                        <p className="text-sm font-bold">{activeOpportunity.duration}</p>
-                      </div>
-                    </div>
                   </div>
-                </CardContent>
-              </Card>
-
-              <Card className="shadow-lg border-none ring-1 ring-accent/30 bg-accent/5 overflow-hidden">
-                <CardHeader className="pb-4">
-                  <CardTitle className="text-base font-black uppercase tracking-widest text-accent-foreground flex items-center gap-2">
-                    <Mail className="h-4 w-4" />
-                    Communication
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <Button variant="outline" className="w-full justify-start text-xs font-bold h-11 border-accent/20 bg-background hover:bg-accent/10">
-                    <Mail className="h-4 w-4 mr-3 text-accent" /> Email All Shortlisted
-                  </Button>
                 </CardContent>
               </Card>
             </div>
@@ -526,14 +416,14 @@ function OpportunitiesContent() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Foundation Projects</h1>
-            <p className="text-muted-foreground mt-1 text-sm font-medium">Coordinate ongoing and upcoming project opportunities across the global network.</p>
+            <p className="text-muted-foreground mt-1 text-sm font-medium">Coordinate ongoing project opportunities across the global network.</p>
           </div>
           <div className="flex gap-3">
             <div className="relative hidden lg:block group">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input 
                 placeholder="Search projects..." 
-                className="pl-10 bg-card border-none ring-1 ring-border focus-visible:ring-primary w-[300px] h-10 shadow-sm" 
+                className="pl-10 bg-card border-none ring-1 ring-border w-[300px] h-10 shadow-sm" 
                 value={searchQuery} 
                 onChange={(e) => setSearchQuery(e.target.value)} 
               />
@@ -548,46 +438,45 @@ function OpportunitiesContent() {
                 <DialogContent className="max-w-2xl border-none shadow-2xl">
                   <form onSubmit={handleCreateOpportunity} className="space-y-8 p-4">
                     <DialogHeader>
-                      <DialogTitle className="text-3xl font-bold text-primary font-headline tracking-tight">Post New Opportunity</DialogTitle>
-                      <DialogDescription className="text-sm font-medium">Publish a new project mandate to the global consultant network.</DialogDescription>
+                      <DialogTitle className="text-3xl font-bold text-primary font-headline">Post New Opportunity</DialogTitle>
                     </DialogHeader>
                     <div className="grid gap-6">
                       <div className="grid grid-cols-2 gap-6">
                         <div className="space-y-2">
-                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Project Title</Label>
-                          <Input name="title" placeholder="e.g. Senior Impact Advisor" required className="h-11" />
+                          <Label>Project Title</Label>
+                          <Input name="title" required />
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Exact Location</Label>
-                          <Input name="location" placeholder="e.g. Geneva, Switzerland" required className="h-11" />
+                          <Label>Location</Label>
+                          <Input name="location" required />
                         </div>
                       </div>
                       <div className="grid grid-cols-2 gap-6">
                         <div className="space-y-2">
-                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Global Region</Label>
-                          <Input name="region" placeholder="e.g. Europe - Central" required className="h-11" />
+                          <Label>Region</Label>
+                          <Input name="region" required />
                         </div>
                         <div className="space-y-2">
-                          <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Expected Duration</Label>
-                          <Input name="duration" placeholder="e.g. 6 Months" required className="h-11" />
+                          <Label>Duration</Label>
+                          <Input name="duration" required />
                         </div>
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Application Deadline</Label>
-                        <Input name="deadline" type="date" required className="h-11" />
+                        <Label>Deadline</Label>
+                        <Input name="deadline" type="date" required />
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Detailed Brief</Label>
-                        <Textarea name="description" placeholder="Describe the scope of work and requirements..." rows={4} required className="resize-none" />
+                        <Label>Brief</Label>
+                        <Textarea name="description" rows={4} required />
                       </div>
                       <div className="space-y-2">
-                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Categorization Tags (comma separated)</Label>
-                        <Input name="tags" placeholder="e.g. Law, Infrastructure, Climate" className="h-11" />
+                        <Label>Tags (comma separated)</Label>
+                        <Input name="tags" placeholder="Law, Infrastructure" />
                       </div>
                     </div>
-                    <DialogFooter className="pt-4 gap-3">
-                      <Button variant="ghost" type="button" onClick={() => setIsCreateDialogOpen(false)} className="font-bold">Discard</Button>
-                      <Button type="submit" className="bg-primary px-10 font-bold shadow-lg shadow-primary/20">Publish Project</Button>
+                    <DialogFooter>
+                      <Button variant="ghost" type="button" onClick={() => setIsCreateDialogOpen(false)}>Discard</Button>
+                      <Button type="submit" className="bg-primary px-10">Publish Project</Button>
                     </DialogFooter>
                   </form>
                 </DialogContent>
@@ -597,27 +486,20 @@ function OpportunitiesContent() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {filteredOpportunities.length === 0 ? (
-            <div className="col-span-full py-24 text-center bg-card/30 rounded-3xl border border-dashed border-muted-foreground/30">
-              <div className="inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-muted/50 mb-6">
-                <Briefcase className="h-10 w-10 text-muted-foreground/40" />
-              </div>
-              <h3 className="text-2xl font-bold text-foreground">No matching projects</h3>
-              <p className="text-muted-foreground font-medium mt-2">Try adjusting your search query or post a new opportunity.</p>
-            </div>
+          {oppsLoading ? (
+            <div className="col-span-full py-24 text-center">Loading opportunities...</div>
+          ) : filteredOpportunities.length === 0 ? (
+            <div className="col-span-full py-24 text-center">No matching projects found.</div>
           ) : (
             filteredOpportunities.map(opp => (
-              <Card key={opp.id} className="group transition-all duration-300 hover:ring-2 hover:ring-primary/40 shadow-sm border-none ring-1 ring-border bg-card/60 backdrop-blur-sm hover:-translate-y-1">
-                <CardHeader className="pb-4">
+              <Card key={opp.id} className="group transition-all hover:ring-2 hover:ring-primary/40 border-none ring-1 ring-border bg-card/60">
+                <CardHeader>
                   <div className="flex justify-between items-start mb-4">
-                    <Badge variant="secondary" className="text-[9px] bg-accent/10 text-accent-foreground border-none font-black uppercase tracking-widest px-2.5 py-1">
+                    <Badge variant="secondary" className="text-[9px] bg-accent/10 text-accent-foreground font-black uppercase tracking-widest px-2.5 py-1">
                       {opp.region}
                     </Badge>
-                    <Badge variant="outline" className={`text-[9px] font-black px-2 py-0.5 tracking-tighter ${opp.status === 'open' ? 'border-emerald-200 text-emerald-600 bg-emerald-50' : 'border-muted-foreground/20 text-muted-foreground bg-muted/50'}`}>
-                      {opp.status.toUpperCase()}
-                    </Badge>
                   </div>
-                  <CardTitle className="text-xl font-bold line-clamp-1 group-hover:text-primary transition-colors leading-tight">{opp.title}</CardTitle>
+                  <CardTitle className="text-xl font-bold line-clamp-1 group-hover:text-primary transition-colors">{opp.title}</CardTitle>
                   <CardDescription className="text-xs flex items-center gap-1.5 mt-2 font-bold text-muted-foreground">
                     <MapPin className="h-3.5 w-3.5 text-primary" /> {opp.location}
                   </CardDescription>
@@ -626,25 +508,10 @@ function OpportunitiesContent() {
                   <p className="text-sm text-muted-foreground/90 line-clamp-3 leading-relaxed font-medium">
                     {opp.description}
                   </p>
-                  <div className="flex items-center gap-6 border-t pt-5 border-muted/50">
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[9px] uppercase font-black text-muted-foreground tracking-widest">Candidates</span>
-                      <span className="text-base font-black flex items-center gap-1.5 text-primary">
-                        <Users className="h-4 w-4" /> {opp.applicants.length}
-                      </span>
-                    </div>
-                    <div className="h-10 w-px bg-muted" />
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[9px] uppercase font-black text-muted-foreground tracking-widest">Deadline</span>
-                      <span className="text-base font-black flex items-center gap-1.5 text-primary">
-                        <Calendar className="h-4 w-4" /> {opp.deadline}
-                      </span>
-                    </div>
-                  </div>
                 </CardContent>
-                <CardFooter className="pt-3 border-t bg-muted/20 px-4 py-3 mt-4 flex gap-2">
-                  <Button className="flex-1 bg-primary/95 hover:bg-primary shadow-sm font-black text-xs uppercase tracking-wider" onClick={() => enterManageView(opp)}>
-                    Manage Hub <ChevronRight className="h-4 w-4 ml-1.5" />
+                <CardFooter className="pt-3 border-t bg-muted/20 px-4 py-3 mt-4">
+                  <Button className="w-full bg-primary/95 hover:bg-primary" onClick={() => { setActiveOpportunity(opp); setViewMode('manage'); }}>
+                    Manage Project <ChevronRight className="h-4 w-4 ml-1.5" />
                   </Button>
                 </CardFooter>
               </Card>
@@ -658,7 +525,7 @@ function OpportunitiesContent() {
 
 export default function OpportunitiesPage() {
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading Projects Hub...</div>}>
+    <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading Hub...</div>}>
       <OpportunitiesContent />
     </Suspense>
   )

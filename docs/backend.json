@@ -1,0 +1,71 @@
+
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Information about a consultant or administrator.",
+      "type": "object",
+      "properties": {
+        "firstName": { "type": "string" },
+        "lastName": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "consultant"] },
+        "profession": { "type": "string" },
+        "sector": { "type": "string" },
+        "years": { "type": "number" },
+        "bio": { "type": "string" },
+        "status": { "type": "string", "enum": ["verified", "pending", "rejected"] },
+        "country": { "type": "string" }
+      },
+      "required": ["email", "role"]
+    },
+    "Opportunity": {
+      "title": "Opportunity",
+      "description": "A project mandate posted by the foundation.",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "location": { "type": "string" },
+        "region": { "type": "string" },
+        "duration": { "type": "string" },
+        "deadline": { "type": "string" },
+        "description": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["open", "closed", "draft"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "status"]
+    },
+    "Application": {
+      "title": "Application",
+      "description": "A consultant's application for a specific opportunity.",
+      "type": "object",
+      "properties": {
+        "consultantId": { "type": "string" },
+        "opportunityId": { "type": "string" },
+        "status": { "type": "string", "enum": ["applied", "accepted", "declined"] },
+        "appliedAt": { "type": "string", "format": "date-time" },
+        "consultantName": { "type": "string" },
+        "consultantEmail": { "type": "string" }
+      },
+      "required": ["consultantId", "opportunityId", "status"]
+    }
+  },
+  "auth": {
+    "providers": ["password", "google.com"]
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Consultant and admin profile data."
+    },
+    "/opportunities/{opportunityId}": {
+      "schema": { "$ref": "#/entities/Opportunity" },
+      "description": "Project mandates."
+    },
+    "/opportunities/{opportunityId}/applicants/{applicationId}": {
+      "schema": { "$ref": "#/entities/Application" },
+      "description": "Applications submitted for a specific opportunity."
+    }
+  }
+}
