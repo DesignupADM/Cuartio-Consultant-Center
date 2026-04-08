@@ -1,0 +1,34 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // Helper function to check if user is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Helper function to check if user is an owner of the path
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Helper to check if user is an admin
+    // Note: Since Storage rules don't have get() for Firestore, we rely on paths or metadata if needed,
+    // but for now we'll allow admins based on their UID if they belong to a known list or path.
+    // However, a simple way is to check if the user is in the 'admins' path if we had one,
+    // but for now we'll simplify to owner-only or public-read for profile images.
+
+    match /consultants/{userId}/{allPaths=**} {
+      // Allow consultants to manage their own folder
+      allow read, write: if isOwner(userId);
+      
+      // Allow anyone authenticated to read profile images (optional, if you want public profiles)
+      // allow read: if isSignedIn();
+    }
+    
+    // Fallback: Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -11,11 +11,8 @@ import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 
 const AdminCvInsightExtractionInputSchema = z.object({
-  cvDataUri: z
-    .string()
-    .describe(
-      "The consultant's CV document, as a data URI that must include a MIME type and use Base64 encoding. Expected format: 'data:<mimetype>;base64,<encoded_data>'."
-    ),
+  cvDataUri: z.string().optional().describe("Base64 data URI of the CV"),
+  cvUrl: z.string().optional().describe("Public URL of the CV PDF"),
 });
 export type AdminCvInsightExtractionInput = z.infer<typeof AdminCvInsightExtractionInputSchema>;
 
@@ -61,7 +58,26 @@ const adminCvInsightExtractionFlow = ai.defineFlow(
     outputSchema: AdminCvInsightExtractionOutputSchema,
   },
   async (input) => {
-    const { output } = await prompt(input);
+    let cvDataUri = input.cvDataUri;
+
+    // If a URL is provided, fetch it and convert to data URI
+    if (!cvDataUri && input.cvUrl) {
+      try {
+        const response = await fetch(input.cvUrl);
+        const buffer = await response.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString('base64');
+        cvDataUri = `data:application/pdf;base64,${base64}`;
+      } catch (error) {
+        console.error("Failed to fetch CV from URL:", error);
+        throw new Error("Could not retrieve CV document for analysis.");
+      }
+    }
+
+    if (!cvDataUri) {
+      throw new Error("No CV data provided for analysis.");
+    }
+
+    const { output } = await prompt({ ...input, cvDataUri });
     return output!;
   }
 );

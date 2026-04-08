@@ -13,7 +13,7 @@ import { z } from 'genkit';
 const MatchConsultantsInputSchema = z.object({
   opportunityDescription: z.string().describe('The description of the project opportunity.'),
   consultants: z.array(z.object({
-    id: z.number(),
+    id: z.string(),
     name: z.string(),
     profession: z.string(),
     sector: z.string(),
@@ -25,7 +25,7 @@ export type MatchConsultantsInput = z.infer<typeof MatchConsultantsInputSchema>;
 
 const MatchConsultantsOutputSchema = z.object({
   matches: z.array(z.object({
-    consultantId: z.number(),
+    consultantId: z.string(),
     matchScore: z.number().min(0).max(100).describe('A score from 0-100 indicating fit.'),
     reasoning: z.string().describe('Brief explanation of why this consultant is a match.'),
   })),

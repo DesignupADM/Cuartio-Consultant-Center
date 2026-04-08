@@ -52,6 +52,12 @@ const items = [
     role: "admin",
   },
   {
+    title: "Analytics Hub",
+    url: "/dashboard/analytics",
+    icon: LayoutDashboard,
+    role: "admin",
+  },
+  {
     title: "Admin Panel",
     url: "/dashboard/admin",
     icon: Settings,

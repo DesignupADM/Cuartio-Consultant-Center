@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useMemo, Suspense } from "react"
@@ -57,9 +56,13 @@ import {
   DropdownMenuItem
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
+import { useUser } from "@/firebase/auth/use-user"
+import { useFirestore, useCollection } from "@/firebase"
+import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
+import { motion, AnimatePresence } from "framer-motion"
 
 type Consultant = {
-  id: number;
+  id: string;
   firstName: string;
   lastName: string;
   email: string;
@@ -72,19 +75,11 @@ type Consultant = {
   language: string;
   bio: string;
   status: 'verified' | 'pending' | 'rejected';
+  cvUrl?: string;
+  avatarUrl?: string;
   aiInsight?: AdminCvInsightExtractionOutput;
 }
 
-const consultants: Consultant[] = [
-  { id: 1, firstName: "Alice", lastName: "Johnson", email: "alice.j@example.com", phone: "+44 20 7123 4567", lastUpdate: "2024-03-15", country: "United Kingdom", years: 12, profession: "Energy Consultant", sector: "Infrastructure", language: "English", bio: "Senior expert in renewable energy infrastructure with over a decade of experience in the UK and European markets.", status: 'verified' },
-  { id: 2, firstName: "Bernardo", lastName: "Silva", email: "b.silva@example.pt", phone: "+351 21 123 4567", lastUpdate: "2024-03-10", country: "Portugal", years: 8, profession: "Financial Advisor", sector: "Finance", language: "Portuguese", bio: "Strategic financial planner focusing on cross-border investments and fiscal policy optimization.", status: 'pending' },
-  { id: 3, firstName: "Chika", lastName: "Obi", email: "chika.obi@example.ng", phone: "+234 803 123 4567", lastUpdate: "2024-03-08", country: "Nigeria", years: 15, profession: "Legal Expert", sector: "International Law", language: "Yoruba", bio: "Specialized in international trade law and corporate governance within the African continental free trade area.", status: 'verified' },
-  { id: 4, firstName: "Dmitri", lastName: "Ivanov", email: "d.ivanov@example.ee", phone: "+372 612 3456", lastUpdate: "2024-03-01", country: "Estonia", years: 6, profession: "Software Architect", sector: "Technology", language: "Russian", bio: "Experienced architect lead for government digital transformation projects and e-residency systems.", status: 'pending' },
-  { id: 5, firstName: "Elena", lastName: "Garcia", email: "e.garcia@example.es", phone: "+34 91 123 4567", lastUpdate: "2024-02-28", country: "Spain", years: 20, profession: "Civil Engineer", sector: "Construction", language: "Spanish", bio: "Bridge and structural engineering specialist with extensive work on high-speed rail networks.", status: 'verified' },
-  { id: 6, firstName: "Fatima", lastName: "Al-Zahra", email: "f.alzahra@example.jo", phone: "+962 6 123 4567", lastUpdate: "2024-02-20", country: "Jordan", years: 10, profession: "Policy Analyst", sector: "Public Sector", language: "Arabic", bio: "Expert in socio-economic policy and Middle Eastern regional development frameworks.", status: 'verified' },
-  { id: 7, firstName: "Guillaume", lastName: "Dubois", email: "g.dubois@example.fr", phone: "+33 1 12 34 56 78", lastUpdate: "2024-02-15", country: "France", years: 4, profession: "Climate Specialist", sector: "Sustainability", language: "French", bio: "Focusing on carbon footprint reduction strategies for multinational industrial corporations.", status: 'pending' },
-  { id: 8, firstName: "Hana", lastName: "Tanaka", email: "h.tanaka@example.jp", phone: "+81 3 1234 5678", lastUpdate: "2024-02-10", country: "Japan", years: 9, profession: "Supply Chain Manager", sector: "Logistics", language: "Japanese", bio: "Specialist in lean manufacturing and global logistics resilience during supply chain disruptions.", status: 'verified' },
-]
 
 export default function DirectoryPage() {
   return (
@@ -95,12 +90,18 @@ export default function DirectoryPage() {
 }
 
 function DirectoryContent() {
+  const { profile } = useUser()
+  const db = useFirestore()
+
+  const consultantsQuery = useMemo(() => query(collection(db, "consultantProfiles")), [db])
+  const { data: consultants, loading } = useCollection<Consultant>(consultantsQuery as any)
+
   const [searchQuery, setSearchQuery] = useState("")
   const [isInsightLoading, setIsInsightLoading] = useState(false)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
   const [activeConsultant, setActiveConsultant] = useState<Consultant | null>(null)
   const [showQuickFilters, setShowQuickFilters] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   const { toast } = useToast()
 
   const [visibleColumns, setVisibleColumns] = useState({
@@ -113,14 +114,22 @@ function DirectoryContent() {
   })
 
   const filteredConsultants = useMemo(() => {
-    return consultants.filter(c => 
+    return (consultants || []).filter(c => 
       `${c.firstName} ${c.lastName} ${c.profession} ${c.country} ${c.sector}`.toLowerCase().includes(searchQuery.toLowerCase())
     )
-  }, [searchQuery])
+  }, [consultants, searchQuery])
 
-  const handleOpenCV = (id: number, e?: React.MouseEvent) => {
+  const handleOpenCV = (consultant: Consultant, e?: React.MouseEvent) => {
     e?.stopPropagation()
-    window.open(`https://example.com/cv-mock-${id}.pdf`, '_blank')
+    if (consultant.cvUrl) {
+      window.open(consultant.cvUrl, '_blank')
+    } else {
+      toast({
+        title: "No CV Uploaded",
+        description: "This consultant has not uploaded a CV yet.",
+        variant: "destructive"
+      })
+    }
   }
 
   const handleExport = () => {
@@ -142,16 +151,44 @@ function DirectoryContent() {
     })
   }
 
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.05
+      }
+    }
+  }
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 10 },
+    show: { opacity: 1, y: 0 }
+  }
+
   const handleRowClick = async (consultant: Consultant) => {
     setActiveConsultant(consultant)
     setIsDetailsOpen(true)
+    
+    // If we already have insights, don't re-run
+    if (consultant.aiInsight) {
+      setIsInsightLoading(false)
+      return
+    }
+
     setIsInsightLoading(true)
     
     try {
       const result = await adminCvInsightExtraction({
-        cvDataUri: "data:application/pdf;base64,JVBERi0xLjQKJ..." 
+        cvUrl: consultant.cvUrl
       })
+      
+      // Persist to Firestore
+      const userRef = doc(db, "consultantProfiles", consultant.id)
+      await updateDoc(userRef, { aiInsight: result })
+
       setActiveConsultant((prev) => prev?.id === consultant.id ? { ...prev, aiInsight: result } : prev)
+      toast({ title: "AI Analysis Saved" })
     } catch (error) {
       toast({
         variant: "destructive",
@@ -163,7 +200,7 @@ function DirectoryContent() {
     }
   }
 
-  const toggleSelection = (id: number, e?: React.MouseEvent) => {
+  const toggleSelection = (id: string, e?: React.MouseEvent) => {
     e?.stopPropagation()
     setSelectedIds(prev => 
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
@@ -185,23 +222,35 @@ function DirectoryContent() {
     })
   }
 
-  const handleVerifyProfile = (id: number) => {
-    toast({
-      title: "Profile Verified",
-      description: "Consultant status has been updated to verified."
-    })
-    if (activeConsultant?.id === id) {
-      setActiveConsultant(prev => prev ? { ...prev, status: 'verified' } : null)
+  const handleVerifyProfile = async (id: string) => {
+    const userRef = doc(db, "consultantProfiles", id)
+    try {
+      await updateDoc(userRef, { status: 'verified' })
+      toast({
+        title: "Profile Verified",
+        description: "Consultant status has been updated to verified."
+      })
+      if (activeConsultant?.id === id) {
+        setActiveConsultant(prev => prev ? { ...prev, status: 'verified' } : null)
+      }
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Update Failed",
+        description: "Could not verify the profile."
+      })
     }
   }
 
   return (
     <DashboardLayout>
       <div className="space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6 pt-2">
+          <div className="space-y-1">
             <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Consultant Directory</h1>
-            <p className="text-muted-foreground">Detailed database of global experts and consultants.</p>
+            <p className="text-sm text-muted-foreground max-w-lg">
+              Manage and analyze your global expert network. View profiles, CV insights, and verification status.
+            </p>
           </div>
           <div className="flex flex-wrap gap-2">
             {selectedIds.length > 0 && (
@@ -285,9 +334,9 @@ function DirectoryContent() {
 
             <Sheet>
               <SheetTrigger asChild>
-                <Button variant="outline" className="relative">
-                  <Filter className="mr-2 h-4 w-4" />
-                  More Filters
+                <Button variant="outline" size="sm" className="h-9 relative border-dashed hover:border-primary/50 transition-colors">
+                  <Filter className="mr-2 h-3.5 w-3.5" />
+                  Advanced Filters
                 </Button>
               </SheetTrigger>
               <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
@@ -334,29 +383,34 @@ function DirectoryContent() {
         </div>
 
         <div className="space-y-4">
-          <div className="flex items-center gap-4 bg-card p-4 rounded-xl border shadow-sm">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input 
-                placeholder="Search by name, country, or profession..." 
-                className="pl-9 bg-muted/20"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-4 bg-card/60 backdrop-blur-sm p-2 rounded-2xl border border-border/60 shadow-sm">
+          <div className="relative flex-1 group">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
+            <Input 
+              placeholder="Search by name, country, or professional bio..." 
+              className="pl-10 bg-transparent border-none focus-visible:ring-0 h-11 text-base placeholder:text-muted-foreground/60 w-full"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-2 px-2 border-l border-border/50">
             <Button 
-              variant={showQuickFilters ? "secondary" : "outline"} 
+              variant={showQuickFilters ? "secondary" : "ghost"} 
+              size="sm"
               onClick={() => setShowQuickFilters(!showQuickFilters)}
-              className="gap-2"
+              className="h-9 gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
             >
-              <Filter className="h-4 w-4" />
+              <Filter className="h-3.5 w-3.5" />
               Quick Filters
-              {showQuickFilters ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              {showQuickFilters ? <ChevronUp className="h-3.5 w-3.5 text-primary" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </Button>
-            <div className="text-sm font-medium text-muted-foreground border-l pl-4 hidden sm:block">
-              <span className="text-primary font-bold">{filteredConsultants.length}</span> Results
+            <Separator orientation="vertical" className="h-6 mx-1" />
+            <div className="px-3 py-1.5 bg-primary/5 rounded-lg border border-primary/10 whitespace-nowrap">
+              <span className="text-xs font-bold text-primary">{filteredConsultants.length}</span> 
+              <span className="text-[10px] uppercase font-bold text-muted-foreground ml-1.5 tracking-tight">Consultants</span>
             </div>
           </div>
+        </div>
 
           {showQuickFilters && (
             <div className="bg-card p-6 rounded-xl border shadow-sm animate-in slide-in-from-top-2 duration-200">
@@ -416,50 +470,67 @@ function DirectoryContent() {
           )}
         </div>
 
-        <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+        <div className="rounded-2xl border border-border/60 bg-card/40 shadow-xl overflow-hidden backdrop-blur-md">
           <Table>
-            <TableHeader className="bg-muted/50">
-              <TableRow>
-                <TableHead className="w-[40px]">
+            <TableHeader className="bg-muted/30">
+              <TableRow className="hover:bg-transparent border-b border-border/50">
+                <TableHead className="w-[50px] pl-6">
                   <Checkbox 
                     checked={selectedIds.length === filteredConsultants.length && filteredConsultants.length > 0}
                     onCheckedChange={toggleAll}
+                    className="border-muted-foreground/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                   />
                 </TableHead>
-                <TableHead className="cursor-pointer hover:text-primary transition-colors">
-                  Consultant
+                <TableHead className="w-[300px] font-bold text-xs uppercase tracking-wider text-muted-foreground py-4">
+                  Expert Identity
                 </TableHead>
-                <TableHead>Profession</TableHead>
-                {visibleColumns.status && <TableHead>Status</TableHead>}
-                {visibleColumns.sector && <TableHead>Sector</TableHead>}
-                <TableHead>Country</TableHead>
-                {visibleColumns.years && <TableHead>Exp.</TableHead>}
-                {visibleColumns.lastUpdate && <TableHead>Last Update</TableHead>}
-                <TableHead className="text-right">Actions</TableHead>
+                <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Expertise Area</TableHead>
+                {visibleColumns.status && <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Status</TableHead>}
+                {visibleColumns.sector && <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Industrial Sector</TableHead>}
+                <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Region</TableHead>
+                {visibleColumns.years && <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground text-center">Exp.</TableHead>}
+                {visibleColumns.lastUpdate && <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Last Indexed</TableHead>}
+                <TableHead className="text-right pr-6 font-bold text-xs uppercase tracking-wider text-muted-foreground">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredConsultants.map((consultant) => (
-                <TableRow 
-                  key={consultant.id} 
-                  className={`hover:bg-muted/30 transition-colors cursor-pointer group ${selectedIds.includes(consultant.id) ? 'bg-primary/5' : ''}`}
-                  onClick={() => handleRowClick(consultant)}
-                >
-                  <TableCell onClick={(e) => e.stopPropagation()}>
+              <AnimatePresence mode="popLayout">
+                {filteredConsultants.map((consultant, index) => (
+                  <motion.tr 
+                    key={consultant.id} 
+                    variants={itemVariants}
+                    initial="hidden"
+                    animate="show"
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.2, delay: index * 0.03 }}
+                    className={`hover:bg-muted/30 transition-colors cursor-pointer group border-b ${selectedIds.includes(consultant.id) ? 'bg-primary/5' : ''}`}
+                    onClick={() => handleRowClick(consultant)}
+                  >
+                    <TableCell onClick={(e) => e.stopPropagation()} className="pl-6">
                     <Checkbox 
                       checked={selectedIds.includes(consultant.id)}
                       onCheckedChange={() => toggleSelection(consultant.id)}
+                      className="border-muted-foreground/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
                     />
                   </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                      <span className="font-semibold group-hover:text-primary transition-colors">
-                        {consultant.firstName} {consultant.lastName}
-                      </span>
-                      <span className="text-xs text-muted-foreground">{consultant.email}</span>
+                  <TableCell className="py-4">
+                    <div className="flex items-center gap-4">
+                      <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center overflow-hidden shrink-0 border border-primary/10 shadow-sm">
+                        {consultant.avatarUrl ? (
+                          <img src={consultant.avatarUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <User className="h-5 w-5 text-primary/60" />
+                        )}
+                      </div>
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-bold text-sm text-foreground group-hover:text-primary transition-colors truncate">
+                          {consultant.firstName} {consultant.lastName}
+                        </span>
+                        <span className="text-[11px] text-muted-foreground truncate">{consultant.email}</span>
+                      </div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-muted-foreground">{consultant.profession}</TableCell>
+                  <TableCell className="font-medium text-[13px] text-foreground/80">{consultant.profession}</TableCell>
                   {visibleColumns.status && (
                     <TableCell>
                       <Badge 
@@ -470,36 +541,41 @@ function DirectoryContent() {
                       </Badge>
                     </TableCell>
                   )}
-                  {visibleColumns.sector && <TableCell className="text-xs">{consultant.sector}</TableCell>}
+                  {visibleColumns.sector && <TableCell><Badge variant="secondary" className="bg-muted/50 font-normal text-[11px] h-5">{consultant.sector}</Badge></TableCell>}
                   <TableCell>
-                    <Badge variant="outline" className="font-normal">{consultant.country}</Badge>
+                    <div className="flex items-center gap-2">
+                       <Globe className="h-3 w-3 text-muted-foreground" />
+                       <span className="text-[13px] font-medium">{consultant.country}</span>
+                    </div>
                   </TableCell>
-                  {visibleColumns.years && <TableCell className="text-xs">{consultant.years}y</TableCell>}
-                  {visibleColumns.lastUpdate && <TableCell className="text-xs text-muted-foreground">{consultant.lastUpdate}</TableCell>}
-                  <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex justify-end gap-1">
+                  {visibleColumns.years && <TableCell className="text-center font-bold text-[13px] text-primary/80 leading-none">{consultant.years}y</TableCell>}
+                  {visibleColumns.lastUpdate && <TableCell className="text-[11px] font-mono text-muted-foreground whitespace-nowrap">{consultant.lastUpdate}</TableCell>}
+                  <TableCell className="text-right pr-6" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex justify-end gap-1.5">
                       <Button 
                         size="icon" 
                         variant="ghost" 
-                        onClick={(e) => handleOpenCV(consultant.id, e)}
-                        className="h-8 w-8"
-                        title="View CV"
+                        onClick={(e) => handleOpenCV(consultant, e)}
+                        className="h-8 w-8 hover:bg-primary/10 hover:text-primary transition-all duration-200"
+                        title="View Expert CV"
+                        disabled={!consultant.cvUrl}
                       >
-                        <FileText className="h-4 w-4 text-primary" />
+                        <FileText className={`h-4 w-4 ${consultant.cvUrl ? 'text-primary' : 'text-muted-foreground/30'}`} />
                       </Button>
                       <Button 
                         size="icon" 
                         variant="ghost" 
                         onClick={(e) => { e.stopPropagation(); toggleSelection(consultant.id); }}
-                        className="h-8 w-8"
-                        title="Select"
+                        className={`h-8 w-8 transition-all duration-200 ${selectedIds.includes(consultant.id) ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-muted-foreground/30 hover:text-foreground'}`}
+                        title="Select Profile"
                       >
-                        <CircleCheck className={`h-4 w-4 ${selectedIds.includes(consultant.id) ? 'text-primary' : 'text-muted-foreground/30'}`} />
+                        <CircleCheck className="h-4 w-4" />
                       </Button>
                     </div>
                   </TableCell>
-                </TableRow>
+                </motion.tr>
               ))}
+            </AnimatePresence>
             </TableBody>
           </Table>
         </div>
@@ -511,8 +587,12 @@ function DirectoryContent() {
                 <SheetHeader className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                        <User className="h-6 w-6" />
+                      <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary overflow-hidden">
+                        {activeConsultant.avatarUrl ? (
+                          <img src={activeConsultant.avatarUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          <User className="h-6 w-6" />
+                        )}
                       </div>
                       <div>
                         <SheetTitle className="text-2xl">{activeConsultant.firstName} {activeConsultant.lastName}</SheetTitle>
@@ -605,9 +685,14 @@ function DirectoryContent() {
                 </div>
 
                 <SheetFooter className="pt-6 flex flex-col gap-3">
-                  <Button onClick={() => handleOpenCV(activeConsultant.id)} className="w-full" variant="outline">
+                  <Button 
+                    onClick={() => handleOpenCV(activeConsultant)} 
+                    className="w-full" 
+                    variant="outline"
+                    disabled={!activeConsultant.cvUrl}
+                  >
                     <FileText className="mr-2 h-4 w-4" />
-                    Open Original CV PDF
+                    {activeConsultant.cvUrl ? "Open Original CV PDF" : "No CV Uploaded"}
                   </Button>
                   <Button className="w-full bg-primary">
                     <Mail className="mr-2 h-4 w-4" /> Contact Consultant

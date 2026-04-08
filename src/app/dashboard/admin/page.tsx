@@ -33,23 +33,27 @@ import { errorEmitter } from "@/firebase/error-emitter"
 import { FirestorePermissionError } from "@/firebase/errors"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
+import { useUser } from "@/firebase/auth/use-user"
+
 export default function AdminPanelPage() {
+  const { profile } = useUser()
+  const role = profile?.role || "admin"
   const { toast } = useToast()
   const db = useFirestore()
   const [isSaving, setIsSaving] = useState(false)
   const [newQuestionType, setNewQuestionType] = useState<"text" | "textarea" | "select">("text")
 
   // Fetch admin users
-  const adminsQuery = useMemo(() => query(collection(db, "users"), where("role", "==", "admin")), [db])
-  const { data: admins, loading: adminsLoading } = useCollection(adminsQuery)
+  const adminsQuery = useMemo(() => query(collection(db, "adminRoles")), [db])
+  const { data: admins, loading: adminsLoading } = useCollection(adminsQuery as any)
 
   // Fetch global settings
   const settingsRef = useMemo(() => doc(db, "settings", "global"), [db])
-  const { data: settings, loading: settingsLoading } = useDoc(settingsRef)
+  const { data: settings, loading: settingsLoading } = useDoc(settingsRef as any)
 
   // Fetch dynamic questions
   const questionsQuery = useMemo(() => query(collection(db, "settings", "registration", "questions"), orderBy("order", "asc")), [db])
-  const { data: questions, loading: questionsLoading } = useCollection(questionsQuery)
+  const { data: questions, loading: questionsLoading } = useCollection(questionsQuery as any)
 
   const handleToggleSetting = (key: string, value: boolean) => {
     updateDoc(settingsRef, { [key]: value })
@@ -121,7 +125,7 @@ export default function AdminPanelPage() {
 
   const handleDeleteAdmin = (adminId: string) => {
     if (confirm("Are you sure you want to remove this administrator?")) {
-      deleteDoc(doc(db, "users", adminId))
+      deleteDoc(doc(db, "adminRoles", adminId))
         .then(() => toast({ title: "Admin Removed" }))
         .catch(() => toast({ variant: "destructive", title: "Action Failed" }))
     }

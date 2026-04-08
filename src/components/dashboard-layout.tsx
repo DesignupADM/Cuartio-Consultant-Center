@@ -27,8 +27,13 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import Link from "next/link"
-import { useSearchParams } from "next/navigation"
+import { useAuth } from "@/firebase"
+import { useUser } from "@/firebase/auth/use-user"
+import { signOut } from "firebase/auth"
 import { Separator } from "@/components/ui/separator"
+import { ProtectedRoute } from "@/components/protected-route"
+import { useRouter } from "next/navigation"
+import { ModeToggle } from "@/components/mode-toggle"
 
 function DashboardShell({
   children,
@@ -37,8 +42,15 @@ function DashboardShell({
   children: React.ReactNode
   role?: "admin" | "consultant"
 }) {
-  const searchParams = useSearchParams()
-  const role = roleProp || (searchParams.get("role") as "admin" | "consultant") || "admin"
+  const { user, profile } = useUser()
+  const auth = useAuth()
+  const router = useRouter()
+  const role = roleProp || profile?.role || "consultant"
+
+  const handleLogout = async () => {
+    await signOut(auth)
+    router.push("/login")
+  }
 
   return (
     <SidebarProvider>
@@ -66,11 +78,13 @@ function DashboardShell({
               <SidebarMenuButton size="lg" asChild className="hover:bg-primary/5 rounded-xl transition-colors">
                 <Link href={`/dashboard/profile?role=${role}`}>
                   <Avatar className="h-10 w-10 rounded-xl border-2 border-primary/10 shadow-sm">
-                    <AvatarImage src="https://picsum.photos/seed/user/80/80" />
-                    <AvatarFallback className="rounded-xl bg-primary/10 text-primary font-bold">JD</AvatarFallback>
+                    <AvatarImage src={user?.photoURL || "https://picsum.photos/seed/user/80/80"} />
+                    <AvatarFallback className="rounded-xl bg-primary/10 text-primary font-bold">
+                      {user?.displayName?.charAt(0) || user?.email?.charAt(0).toUpperCase() || "JD"}
+                    </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden ml-2">
-                    <span className="truncate font-black text-foreground">John Doe</span>
+                    <span className="truncate font-black text-foreground">{user?.displayName || user?.email || "John Doe"}</span>
                     <span className="truncate text-[10px] text-muted-foreground uppercase font-black tracking-widest">
                       {role === "admin" ? "Administrator" : "Consultant"}
                     </span>
@@ -79,11 +93,13 @@ function DashboardShell({
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem className="mt-2">
-              <SidebarMenuButton asChild tooltip="Logout" className="text-destructive hover:text-destructive hover:bg-destructive/10 rounded-xl transition-all">
-                <Link href="/login">
-                  <LogOut className="h-4 w-4" />
-                  <span className="font-bold">Logout System</span>
-                </Link>
+              <SidebarMenuButton 
+                onClick={handleLogout}
+                tooltip="Logout" 
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 rounded-xl transition-all"
+              >
+                <LogOut className="h-4 w-4" />
+                <span className="font-bold">Logout System</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -104,13 +120,15 @@ function DashboardShell({
             </div>
           </div>
           <div className="ml-auto flex items-center gap-3">
+             <ModeToggle />
+             <Separator orientation="vertical" className="h-4 mx-1" />
              <Button variant="ghost" size="icon" className="rounded-full text-muted-foreground hover:text-primary hover:bg-primary/5 relative">
                 <Bell className="h-5 w-5" />
                 <span className="absolute top-2 right-2 h-2 w-2 bg-accent rounded-full border-2 border-background" />
              </Button>
              <Separator orientation="vertical" className="h-4 mx-1" />
              <Button variant="ghost" size="icon" className="rounded-full text-muted-foreground hover:text-primary hover:bg-primary/5" asChild>
-                <Link href={`/dashboard/admin?role=${role}`}>
+                <Link href={role === "admin" ? `/dashboard/admin?role=${role}` : `/dashboard/profile?role=${role}`}>
                   <Settings className="h-5 w-5" />
                 </Link>
              </Button>
@@ -131,8 +149,10 @@ export function DashboardLayout(props: {
   role?: "admin" | "consultant"
 }) {
   return (
-    <React.Suspense fallback={<div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" /></div>}>
-      <DashboardShell {...props} />
-    </React.Suspense>
+    <ProtectedRoute requiredRole={props.role}>
+      <React.Suspense fallback={<div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-10 w-10 animate-spin text-primary opacity-20" /></div>}>
+        <DashboardShell {...props} />
+      </React.Suspense>
+    </ProtectedRoute>
   )
 }
