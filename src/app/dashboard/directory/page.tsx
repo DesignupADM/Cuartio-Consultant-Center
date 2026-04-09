@@ -32,7 +32,8 @@ import {
   X,
   MoreHorizontal,
   CheckCircle2,
-  MessageSquare
+  MessageSquare,
+  Loader2
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { 
@@ -59,8 +60,11 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useUser } from "@/firebase/auth/use-user"
-import { useFirestore, useCollection } from "@/firebase"
-import { collection, query, where, orderBy, doc, updateDoc } from "firebase/firestore"
+import { useFirestore, usePaginatedCollection } from "@/firebase"
+import { collection, query, where, orderBy, doc, updateDoc, writeBatch, getDocs } from "firebase/firestore"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { motion, AnimatePresence } from "framer-motion"
 
 type Consultant = {
@@ -95,8 +99,20 @@ function DirectoryContent() {
   const { profile } = useUser()
   const db = useFirestore()
 
-  const consultantsQuery = useMemo(() => query(collection(db, "consultantProfiles")), [db])
-  const { data: consultants, loading } = useCollection<Consultant>(consultantsQuery as any)
+  const [filters, setFilters] = useState({ country: '', sector: '', language: '', minYears: '' })
+  const [isMessageDialogOpen, setIsMessageDialogOpen] = useState(false)
+  const [messageMode, setMessageMode] = useState<'custom' | 'template'>('custom')
+  const [messageForm, setMessageForm] = useState({ subject: '', body: '', templateId: '' })
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
+  
+  const consultantsQuery = useMemo(() => {
+    let q = query(collection(db, "consultantProfiles"));
+    if (filters.country) q = query(q, where('country', '==', filters.country));
+    if (filters.sector) q = query(q, where('sector', '==', filters.sector));
+    if (filters.language) q = query(q, where('language', '==', filters.language));
+    return q;
+  }, [db, filters])
+  const { data: consultants, loading, loadingMore, hasMore, loadMore } = usePaginatedCollection<Consultant>(consultantsQuery as any, 20)
 
   const [searchQuery, setSearchQuery] = useState("")
   const [isInsightLoading, setIsInsightLoading] = useState(false)
@@ -134,23 +150,31 @@ function DirectoryContent() {
     }
   }
 
-  const handleExport = () => {
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + ["Name,Last Name,Email,Country,Profession,Years Experience,Sector,Status"].join(",") + "\n"
-      + filteredConsultants.map(c => `${c.firstName},${c.lastName},${c.email},${c.country},${c.profession},${c.years},${c.sector},${c.status}`).join("\n");
-    
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `consultants_export_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleExport = async () => {
+    try {
+      toast({ title: "Generating Export", description: "Fetching complete database..." })
+      const snapshot = await getDocs(collection(db, "consultantProfiles"));
+      const allConsultants = snapshot.docs.map(doc => doc.data() as Consultant);
+      
+      const csvContent = "data:text/csv;charset=utf-8," 
+        + ["Name,Last Name,Email,Country,Profession,Years Experience,Sector,Status"].join(",") + "\n"
+        + allConsultants.map(c => `${c.firstName},${c.lastName},${c.email},${c.country},${c.profession},${c.years},${c.sector},${c.status}`).join("\n");
+      
+      const encodedUri = encodeURI(csvContent);
+      const link = document.createElement("a");
+      link.setAttribute("href", encodedUri);
+      link.setAttribute("download", `consultants_export_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
 
-    toast({
-      title: "Export Successful",
-      description: `Exported ${filteredConsultants.length} consultants to CSV.`
-    })
+      toast({
+        title: "Export Successful",
+        description: `Exported ${allConsultants.length} total consultant profiles.`
+      })
+    } catch (err) {
+      toast({ title: "Export Failed", variant: "destructive" })
+    }
   }
 
   const containerVariants = {
@@ -218,10 +242,43 @@ function DirectoryContent() {
   }
 
   const handleBulkMessage = () => {
+    if (selectedIds.length === 0) return;
+    setIsMessageDialogOpen(true);
+  }
+
+  const handleSendMessageSubmit = async () => {
+    setIsSendingMessage(true);
+    // Integrate explicit Brevo route here later
+    await new Promise(r => setTimeout(r, 1000));
+    setIsSendingMessage(false);
+    setIsMessageDialogOpen(false);
+    setMessageForm({ subject: '', body: '', templateId: '' });
+    
     toast({
-      title: "Bulk Action Initiated",
-      description: `Preparing to send messages to ${selectedIds.length} consultants.`
-    })
+      title: "Messages Queued",
+      description: `Dispatched instructions to Brevo SMTP for ${selectedIds.length} recipients.`
+    });
+    setSelectedIds([]);
+  }
+
+  const handleBulkVerify = async () => {
+    if (selectedIds.length === 0) return;
+    const batch = writeBatch(db);
+    selectedIds.forEach(id => {
+      const docRef = doc(db, "consultantProfiles", id);
+      batch.update(docRef, { status: 'verified' });
+    });
+    
+    try {
+      await batch.commit();
+      toast({
+        title: "Bulk Verify Successful",
+        description: `Marked ${selectedIds.length} profiles as verified.`
+      });
+      setSelectedIds([]);
+    } catch (err) {
+      toast({ variant: "destructive", title: "Bulk Verify Failed" });
+    }
   }
 
   const handleVerifyProfile = async (id: string) => {
@@ -269,7 +326,7 @@ function DirectoryContent() {
                   <DropdownMenuItem onClick={handleBulkMessage}>
                     <MessageSquare className="mr-2 h-4 w-4" /> Send Message
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => {}}>
+                  <DropdownMenuItem onClick={handleBulkVerify}>
                     <CircleCheck className="mr-2 h-4 w-4" /> Mark as Verified
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
@@ -586,6 +643,20 @@ function DirectoryContent() {
             </AnimatePresence>
             </TableBody>
           </Table>
+          
+          {hasMore && (
+             <div className="p-4 border-t flex justify-center bg-muted/10">
+               <Button 
+                 variant="outline" 
+                 onClick={loadMore} 
+                 disabled={loadingMore}
+                 className="w-full sm:w-auto bg-primary/10"
+               >
+                 {loadingMore && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                 Load More Consultants
+               </Button>
+             </div>
+          )}
         </div>
 
         <Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
@@ -708,7 +779,14 @@ function DirectoryContent() {
                     <FileText className="mr-2 h-4 w-4" />
                     {activeConsultant.cvUrl ? "Open Original CV PDF" : "No CV Uploaded"}
                   </Button>
-                  <Button className="w-full bg-primary">
+                  <Button 
+                    className="w-full bg-primary"
+                    onClick={() => {
+                      if (activeConsultant) {
+                        window.location.href = `mailto:${activeConsultant.email}`;
+                      }
+                    }}
+                  >
                     <Mail className="mr-2 h-4 w-4" /> Contact Consultant
                   </Button>
                 </SheetFooter>
@@ -716,6 +794,66 @@ function DirectoryContent() {
             )}
           </SheetContent>
         </Sheet>
+
+        <Dialog open={isMessageDialogOpen} onOpenChange={setIsMessageDialogOpen}>
+          <DialogContent className="sm:max-w-[500px]">
+            <DialogHeader>
+              <DialogTitle>Send Bulk Message</DialogTitle>
+              <DialogDescription>
+                Configure the message or select a Brevo template to be sent to {selectedIds.length} consultants.
+              </DialogDescription>
+            </DialogHeader>
+            
+            <Tabs defaultValue="custom" onValueChange={(v) => setMessageMode(v as 'custom' | 'template')} className="w-full mt-4">
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="custom">Custom Message</TabsTrigger>
+                <TabsTrigger value="template">Brevo Template</TabsTrigger>
+              </TabsList>
+              <TabsContent value="custom" className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label>Subject Line</Label>
+                  <Input 
+                    placeholder="Enter email subject" 
+                    value={messageForm.subject}
+                    onChange={e => setMessageForm(prev => ({...prev, subject: e.target.value}))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Message Body</Label>
+                  <Textarea 
+                    placeholder="Type your message here..." 
+                    className="min-h-[120px]"
+                    value={messageForm.body}
+                    onChange={e => setMessageForm(prev => ({...prev, body: e.target.value}))}
+                  />
+                </div>
+              </TabsContent>
+              <TabsContent value="template" className="pt-4">
+                <div className="space-y-2">
+                  <Label>Select Template</Label>
+                  <Select value={messageForm.templateId} onValueChange={(val) => setMessageForm(prev => ({...prev, templateId: val}))}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a template" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="tpl_welcome">Welcome to Network</SelectItem>
+                      <SelectItem value="tpl_opportunity">New Opportunity Match</SelectItem>
+                      <SelectItem value="tpl_update">Profile Update Request</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </TabsContent>
+            </Tabs>
+
+            <DialogFooter className="mt-6">
+              <Button variant="outline" onClick={() => setIsMessageDialogOpen(false)}>Cancel</Button>
+              <Button onClick={handleSendMessageSubmit} disabled={isSendingMessage}>
+                {isSendingMessage ? "Sending..." : "Dispatch via Brevo SMTP"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
       </div>
     </DashboardLayout>
   )

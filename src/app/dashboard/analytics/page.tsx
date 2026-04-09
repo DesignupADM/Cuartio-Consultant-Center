@@ -11,7 +11,7 @@ import {
 } from "@/components/analytics-charts"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useFirestore, useCollection } from "@/firebase"
-import { collection, collectionGroup, onSnapshot, query } from "firebase/firestore"
+import { collection, collectionGroup, getDocs, query } from "firebase/firestore"
 import { 
   Target, 
   Zap,
@@ -66,41 +66,35 @@ export default function AnalyticsPage() {
   const db = useFirestore()
   
   // Real Data Fetching
-  const { data: consultants, loading: consultantsLoading } = useCollection<ConsultantProfile>(query(collection(db, "consultantProfiles")) as any)
-  const { data: opportunities, loading: opportunitiesLoading } = useCollection<OpportunityRecord>(query(collection(db, "opportunities")) as any)
+  const { data: consultants, loading: consultantsLoading } = useCollection<ConsultantProfile>(query(collection(db, "consultantProfiles")) as any, { listen: false })
+  const { data: opportunities, loading: opportunitiesLoading } = useCollection<OpportunityRecord>(query(collection(db, "opportunities")) as any, { listen: false })
   const [applicants, setApplicants] = React.useState<ApplicantRecord[]>([])
   const [applicantsLoading, setApplicantsLoading] = React.useState(true)
 
   React.useEffect(() => {
     const applicantsQuery = query(collectionGroup(db, "applicants"))
 
-    const unsubscribe = onSnapshot(
-      applicantsQuery,
-      (snapshot) => {
-        setApplicants(
-          snapshot.docs
-            .map((doc) => {
-              const opportunityId = doc.ref.parent.parent?.id
-              if (!opportunityId) return null
+    getDocs(applicantsQuery).then((snapshot) => {
+      setApplicants(
+        snapshot.docs
+          .map((doc) => {
+            const opportunityId = doc.ref.parent.parent?.id
+            if (!opportunityId) return null
 
-              const data = doc.data() as { status?: ApplicantRecord["status"] }
-              return {
-                id: doc.id,
-                opportunityId,
-                status: data.status || "applied",
-              }
-            })
-            .filter((applicant): applicant is ApplicantRecord => applicant !== null)
-        )
-        setApplicantsLoading(false)
-      },
-      () => {
-        setApplicants([])
-        setApplicantsLoading(false)
-      }
-    )
-
-    return () => unsubscribe()
+            const data = doc.data() as { status?: ApplicantRecord["status"] }
+            return {
+              id: doc.id,
+              opportunityId,
+              status: data.status || "applied",
+            }
+          })
+          .filter((applicant): applicant is ApplicantRecord => applicant !== null)
+      )
+      setApplicantsLoading(false)
+    }).catch(() => {
+      setApplicants([])
+      setApplicantsLoading(false)
+    })
   }, [db])
 
   const analytics = React.useMemo(() => {

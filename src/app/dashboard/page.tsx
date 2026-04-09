@@ -91,10 +91,10 @@ export default function DashboardPage() {
 
   // Fetch live stats
   const consultantsQuery = useMemo(() => role === "admin" ? query(collection(db, "consultantProfiles")) : null, [db, role])
-  const { data: consultants, loading: consultantsLoading } = useCollection<ConsultantProfileRecord>(consultantsQuery as any)
+  const { data: consultants, loading: consultantsLoading } = useCollection<ConsultantProfileRecord>(consultantsQuery as any, { listen: false })
 
   const opportunitiesQuery = useMemo(() => query(collection(db, "opportunities")), [db])
-  const { data: opportunities, loading: opportunitiesLoading } = useCollection<OpportunityRecord>(opportunitiesQuery as any)
+  const { data: opportunities, loading: opportunitiesLoading } = useCollection<OpportunityRecord>(opportunitiesQuery as any, { listen: false })
 
   const [applications, setApplications] = useState<ConsultantApplicationRecord[]>([])
   const [applicationsLoading, setApplicationsLoading] = useState(role === "consultant")

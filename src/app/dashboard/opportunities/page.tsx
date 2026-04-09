@@ -48,7 +48,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useUser } from "@/firebase/auth/use-user"
 import { matchConsultants, type MatchConsultantsOutput } from "@/ai/flows/match-consultants-flow"
 import { Separator } from "@/components/ui/separator"
-import { useFirestore, useCollection } from "@/firebase"
+import { useFirestore, usePaginatedCollection, useCollection } from "@/firebase"
 import { collection, collectionGroup, updateDoc, doc, query, orderBy, onSnapshot, where } from "firebase/firestore"
 import { applyToOpportunity, createOpportunity, type Opportunity } from "@/firebase/firestore/opportunities"
 import { generateOpportunity } from "@/ai/flows/generate-opportunity-flow"
@@ -74,7 +74,7 @@ function OpportunitiesContent() {
   const db = useFirestore()
 
   const oppsQuery = useMemo(() => query(collection(db, "opportunities"), orderBy("createdAt", "desc")), [db])
-  const { data: opportunities, loading: oppsLoading, error: opportunitiesError } = useCollection<Opportunity>(oppsQuery as any)
+  const { data: opportunities, loading: oppsLoading, error: opportunitiesError, loadingMore: oppsLoadingMore, hasMore: oppsHasMore, loadMore: oppsLoadMore } = usePaginatedCollection<Opportunity>(oppsQuery as any, 10)
 
   const [searchQuery, setSearchQuery] = useState("")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -86,7 +86,7 @@ function OpportunitiesContent() {
     return collection(db, "opportunities", activeOpportunity.id, "applicants")
   }, [db, activeOpportunity])
   
-  const { data: applicants, loading: applicantsLoading, error: applicantsError } = useCollection<Applicant>(applicantsQuery as any)
+  const { data: applicants, loading: applicantsLoading, error: applicantsError } = useCollection<Applicant>(applicantsQuery as any, { listen: false })
 
   const [isMatching, setIsMatching] = useState(false)
   const [aiMatches, setAiMatches] = useState<MatchConsultantsOutput | null>(null)
@@ -740,6 +740,20 @@ function OpportunitiesContent() {
             </AnimatePresence>
           )}
         </motion.div>
+
+        {oppsHasMore && (
+          <div className="flex justify-center pt-4 pb-8">
+            <Button 
+              variant="outline" 
+              onClick={oppsLoadMore} 
+              disabled={oppsLoadingMore}
+              className="w-full sm:w-auto bg-card"
+            >
+              {oppsLoadingMore && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Load More Opportunities
+            </Button>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   )

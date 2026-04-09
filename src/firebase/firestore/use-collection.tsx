@@ -6,18 +6,37 @@ import {
   Query, 
   onSnapshot, 
   QuerySnapshot, 
-  DocumentData 
+  DocumentData,
+  getDocs
 } from 'firebase/firestore';
 import { errorEmitter } from '../error-emitter';
 import { FirestorePermissionError } from '../errors';
 
-export function useCollection<T = DocumentData>(query: Query<T> | null) {
+export function useCollection<T = DocumentData>(query: Query<T> | null, options?: { listen?: boolean }) {
   const [data, setData] = useState<T[]>([]);
   const [loading, setLoading] = useState(Boolean(query));
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (!query) {
+      return;
+    }
+
+    const listen = options?.listen ?? true;
+
+    if (!listen) {
+      getDocs(query).then((snapshot) => {
+        setData(snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id } as T)));
+        setLoading(false);
+      }).catch(err => {
+        const permissionError = new FirestorePermissionError({
+          path: 'collection',
+          operation: 'list',
+        });
+        errorEmitter.emit('permission-error', permissionError);
+        setError(err);
+        setLoading(false);
+      });
       return;
     }
 

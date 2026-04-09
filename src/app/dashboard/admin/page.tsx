@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { 
   Settings, 
   Users, 
@@ -42,6 +43,13 @@ export default function AdminPanelPage() {
   const db = useFirestore()
   const [isSaving, setIsSaving] = useState(false)
   const [newQuestionType, setNewQuestionType] = useState<"text" | "textarea" | "select">("text")
+
+  const [isAdminDialogOpen, setIsAdminDialogOpen] = useState(false)
+  const [editingAdmin, setEditingAdmin] = useState<any>(null)
+  const [adminForm, setAdminForm] = useState({ firstName: '', lastName: '', email: '' })
+  
+  const [isQuestionDialogOpen, setIsQuestionDialogOpen] = useState(false)
+  const [editingQuestion, setEditingQuestion] = useState<any>(null)
 
   // Fetch admin users
   const adminsQuery = useMemo(() => query(collection(db, "adminRoles")), [db])
@@ -140,6 +148,66 @@ export default function AdminPanelPage() {
       deleteDoc(doc(db, "adminRoles", adminId))
         .then(() => toast({ title: "Admin Removed" }))
         .catch(() => toast({ variant: "destructive", title: "Action Failed" }))
+    }
+  }
+
+  const openAddAdmin = () => {
+    setEditingAdmin(null)
+    setAdminForm({ firstName: '', lastName: '', email: '' })
+    setIsAdminDialogOpen(true)
+  }
+
+  const openEditAdmin = (admin: any) => {
+    setEditingAdmin(admin)
+    setAdminForm({ firstName: admin.firstName, lastName: admin.lastName, email: admin.email })
+    setIsAdminDialogOpen(true)
+  }
+
+  const handleSaveAdmin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSaving(true)
+    try {
+      if (editingAdmin) {
+        await updateDoc(doc(db, "adminRoles", editingAdmin.id), adminForm)
+        toast({ title: "Admin Updated" })
+      } else {
+        await addDoc(collection(db, "adminRoles"), { ...adminForm, role: 'admin' })
+        toast({ title: "Admin Added" })
+      }
+      setIsAdminDialogOpen(false)
+    } catch {
+      toast({ variant: "destructive", title: "Action Failed" })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const openEditQuestion = (q: any) => {
+    setEditingQuestion(q)
+    setIsQuestionDialogOpen(true)
+  }
+
+  const handleSaveQuestion = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsSaving(true)
+    try {
+      const formData = new FormData(e.currentTarget)
+      const label = formData.get("label") as string
+      const optionsRaw = formData.get("options") as string
+      const type = formData.get("type") as string
+      
+      await updateDoc(doc(db, "settings", "registration", "questions", editingQuestion.id), {
+        label,
+        type,
+        required: formData.get("required") === "on",
+        options: type === "select" ? optionsRaw.split(",").map(o => o.trim()).filter(o => !!o) : []
+      })
+      toast({ title: "Question Updated" })
+      setIsQuestionDialogOpen(false)
+    } catch {
+      toast({ variant: "destructive", title: "Update Failed" })
+    } finally {
+      setIsSaving(false)
     }
   }
 
@@ -308,14 +376,24 @@ export default function AdminPanelPage() {
                               <p className="text-[10px] text-muted-foreground uppercase tracking-widest">{q.type} field</p>
                             </div>
                           </div>
-                          <Button 
-                            variant="ghost" 
-                            size="icon" 
-                            className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
-                            onClick={() => handleDeleteQuestion(q.id)}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
+                          <div className="flex items-center gap-2">
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => openEditQuestion(q)}
+                            >
+                              <SquarePen className="h-4 w-4" />
+                            </Button>
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity"
+                              onClick={() => handleDeleteQuestion(q.id)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </div>
                       ))
                     )}
@@ -335,7 +413,7 @@ export default function AdminPanelPage() {
                   </CardTitle>
                   <CardDescription>Users with full system access.</CardDescription>
                 </div>
-                <Button size="sm">
+                <Button size="sm" onClick={openAddAdmin}>
                   <Plus className="h-4 w-4 mr-2" /> Add Admin
                 </Button>
               </CardHeader>
@@ -356,7 +434,7 @@ export default function AdminPanelPage() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="icon" className="h-8 w-8"><SquarePen className="h-3 w-3" /></Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditAdmin(acc)}><SquarePen className="h-3 w-3" /></Button>
                           <Button 
                             variant="ghost" 
                             size="icon" 
@@ -374,6 +452,93 @@ export default function AdminPanelPage() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Modals */}
+        <Dialog open={isAdminDialogOpen} onOpenChange={setIsAdminDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{editingAdmin ? "Edit Admin" : "Add New Admin"}</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={handleSaveAdmin} className="space-y-4 pt-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>First Name</Label>
+                  <Input 
+                    required 
+                    value={adminForm.firstName} 
+                    onChange={e => setAdminForm(prev => ({...prev, firstName: e.target.value}))} 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Last Name</Label>
+                  <Input 
+                    required 
+                    value={adminForm.lastName} 
+                    onChange={e => setAdminForm(prev => ({...prev, lastName: e.target.value}))} 
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input 
+                  type="email" 
+                  required 
+                  value={adminForm.email} 
+                  onChange={e => setAdminForm(prev => ({...prev, email: e.target.value}))} 
+                />
+              </div>
+              <DialogFooter className="pt-4">
+                <Button type="button" variant="ghost" onClick={() => setIsAdminDialogOpen(false)}>Cancel</Button>
+                <Button type="submit" disabled={isSaving}>
+                  {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {editingAdmin ? "Save Changes" : "Create Admin Phase-1"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isQuestionDialogOpen} onOpenChange={setIsQuestionDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Registration Question</DialogTitle>
+            </DialogHeader>
+            {editingQuestion && (
+              <form onSubmit={handleSaveQuestion} className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label>Question Label</Label>
+                  <Input name="label" required defaultValue={editingQuestion.label} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Field Type</Label>
+                  <Select name="type" defaultValue={editingQuestion.type}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="text">Short Text</SelectItem>
+                      <SelectItem value="textarea">Long Answer</SelectItem>
+                      <SelectItem value="select">Dropdown Menu</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Options (comma separated, if select)</Label>
+                  <Input name="options" defaultValue={(editingQuestion.options || []).join(", ")} />
+                </div>
+                <div className="flex items-center gap-2 py-2">
+                  <Switch name="required" id="edit-req" defaultChecked={editingQuestion.required} />
+                  <Label htmlFor="edit-req">Required field</Label>
+                </div>
+                <DialogFooter className="pt-4">
+                  <Button type="button" variant="ghost" onClick={() => setIsQuestionDialogOpen(false)}>Cancel</Button>
+                  <Button type="submit" disabled={isSaving}>
+                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Update Registration Form
+                  </Button>
+                </DialogFooter>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )
