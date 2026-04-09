@@ -7,6 +7,82 @@ import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { useAuth, useFirestore } from '../provider';
 import { UserProfile } from '../firestore/users';
 
+const profileCache = new Map<string, UserProfile | null>();
+const profileRequestCache = new Map<string, Promise<UserProfile | null>>();
+
+function buildConsultantProfile(firebaseUser: User, data?: Record<string, unknown>): UserProfile {
+  return {
+    uid: firebaseUser.uid,
+    role: "consultant",
+    email: firebaseUser.email,
+    ...(data || {}),
+  } as UserProfile;
+}
+
+function buildAdminProfile(firebaseUser: User): UserProfile {
+  return {
+    uid: firebaseUser.uid,
+    role: "admin",
+    email: firebaseUser.email,
+  };
+}
+
+async function resolveInitialProfile(db: ReturnType<typeof useFirestore>, firebaseUser: User): Promise<UserProfile | null> {
+  const cached = profileCache.get(firebaseUser.uid);
+  if (cached !== undefined) {
+    return cached
+      ? {
+          ...cached,
+          email: firebaseUser.email ?? cached.email,
+        }
+      : null;
+  }
+
+  const inFlightRequest = profileRequestCache.get(firebaseUser.uid);
+  if (inFlightRequest) {
+    return inFlightRequest;
+  }
+
+  const request = (async () => {
+    const profileRef = doc(db, "consultantProfiles", firebaseUser.uid);
+    const profileSnap = await getDoc(profileRef);
+
+    if (profileSnap.exists()) {
+      const resolvedProfile = buildConsultantProfile(firebaseUser, profileSnap.data());
+      profileCache.set(firebaseUser.uid, resolvedProfile);
+      return resolvedProfile;
+    }
+
+    const adminRef = doc(db, "adminRoles", firebaseUser.uid);
+    const consultantRoleRef = doc(db, "consultantRoles", firebaseUser.uid);
+    const [adminSnap, consultantRoleSnap] = await Promise.all([
+      getDoc(adminRef),
+      getDoc(consultantRoleRef),
+    ]);
+
+    if (adminSnap.exists()) {
+      const resolvedProfile = buildAdminProfile(firebaseUser);
+      profileCache.set(firebaseUser.uid, resolvedProfile);
+      return resolvedProfile;
+    }
+
+    if (consultantRoleSnap.exists()) {
+      const resolvedProfile = buildConsultantProfile(firebaseUser);
+      profileCache.set(firebaseUser.uid, resolvedProfile);
+      return resolvedProfile;
+    }
+
+    const fallbackProfile = buildConsultantProfile(firebaseUser);
+    profileCache.set(firebaseUser.uid, fallbackProfile);
+    return fallbackProfile;
+  })().finally(() => {
+    profileRequestCache.delete(firebaseUser.uid);
+  });
+
+  profileRequestCache.set(firebaseUser.uid, request);
+  return request;
+}
+
 export function useUser() {
   const auth = useAuth();
   const db = useFirestore();
@@ -16,6 +92,7 @@ export function useUser() {
 
   useEffect(() => {
     let unsubscribeProfile: (() => void) | null = null;
+    let isCancelled = false;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
@@ -27,51 +104,47 @@ export function useUser() {
       }
 
       if (firebaseUser) {
-        // Set up real-time listener for profile
-        const profileRef = doc(db, "consultantProfiles", firebaseUser.uid);
-        unsubscribeProfile = onSnapshot(profileRef, async (docSnap) => {
-          if (docSnap.exists()) {
-            setProfile({
-              uid: firebaseUser.uid,
-              role: "consultant",
-              ...docSnap.data()
-            } as UserProfile);
-            setLoading(false);
-          } else {
-            // If not in consultantProfiles, check if they are an admin
-            try {
-              const adminRef = doc(db, "adminRoles", firebaseUser.uid);
-              const adminSnap = await getDoc(adminRef);
-              
-              if (adminSnap.exists()) {
-                setProfile({
-                  uid: firebaseUser.uid,
-                  role: "admin",
-                  email: firebaseUser.email
-                } as UserProfile);
-              } else {
-                // Default fallback
-                setProfile({
-                  uid: firebaseUser.uid,
-                  role: "consultant",
-                  email: firebaseUser.email
-                } as UserProfile);
-              }
-            } catch (err) {
-              console.error("Error checking admin role:", err);
-              // Fallback to consultant on error
-              setProfile({
-                uid: firebaseUser.uid,
-                role: "consultant",
-                email: firebaseUser.email
-              } as UserProfile);
-            }
-            setLoading(false);
-          }
-        }, (err) => {
-          console.error("Profile listener error:", err);
+        const cachedProfile = profileCache.get(firebaseUser.uid);
+        if (cachedProfile !== undefined) {
+          setProfile(cachedProfile);
           setLoading(false);
-        });
+        } else {
+          setLoading(true);
+        }
+
+        try {
+          const resolvedProfile = await resolveInitialProfile(db, firebaseUser);
+          if (isCancelled) return;
+
+          setProfile(resolvedProfile);
+          setLoading(false);
+
+          if (resolvedProfile?.role === "consultant") {
+            const profileRef = doc(db, "consultantProfiles", firebaseUser.uid);
+            unsubscribeProfile = onSnapshot(
+              profileRef,
+              (docSnap) => {
+                const nextProfile = docSnap.exists()
+                  ? buildConsultantProfile(firebaseUser, docSnap.data())
+                  : buildConsultantProfile(firebaseUser);
+
+                profileCache.set(firebaseUser.uid, nextProfile);
+                setProfile(nextProfile);
+              },
+              (err) => {
+                console.error("Profile listener error:", err);
+              }
+            );
+          }
+        } catch (err) {
+          console.error("Error resolving user profile:", err);
+          if (isCancelled) return;
+
+          const fallbackProfile = buildConsultantProfile(firebaseUser);
+          profileCache.set(firebaseUser.uid, fallbackProfile);
+          setProfile(fallbackProfile);
+          setLoading(false);
+        }
       } else {
         setProfile(null);
         setLoading(false);
@@ -79,6 +152,7 @@ export function useUser() {
     });
 
     return () => {
+      isCancelled = true;
       unsubscribeAuth();
       if (unsubscribeProfile) unsubscribeProfile();
     };

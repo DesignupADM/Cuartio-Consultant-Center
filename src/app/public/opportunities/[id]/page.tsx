@@ -1,7 +1,7 @@
 
 "use client"
 
-import { use, useState, useEffect } from "react"
+import { use, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -22,6 +22,7 @@ import Image from "next/image"
 import { PlaceHolderImages } from "@/lib/placeholder-images"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 
@@ -29,11 +30,6 @@ export default function PublicOpportunityPage({ params }: { params: Promise<{ id
   const { id } = use(params)
   const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isMounted, setIsMounted] = useState(false)
-
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
 
   const heroImage = PlaceHolderImages.find(img => img.id === 'hero-public') || {
     imageUrl: "https://picsum.photos/seed/public-hero/1200/600",
@@ -132,7 +128,7 @@ export default function PublicOpportunityPage({ params }: { params: Promise<{ id
                   </div>
                   <div>
                     <h4 className="font-semibold">Deadline</h4>
-                    <p className="text-sm text-muted-foreground">{isMounted ? new Date('2024-12-10').toLocaleDateString() : '2024-12-10'}</p>
+                    <p className="text-sm text-muted-foreground">December 10, 2024</p>
                   </div>
                 </div>
               </div>
@@ -201,7 +197,7 @@ export default function PublicOpportunityPage({ params }: { params: Promise<{ id
               </div>
               <div className="flex gap-3">
                 <CheckCircle2 className="h-5 w-5 text-accent shrink-0" />
-                <p className="text-sm">Direct access to Curatio Foundation's mission leaders.</p>
+                <p className="text-sm">Direct access to Curatio Foundation&apos;s mission leaders.</p>
               </div>
             </CardContent>
           </Card>

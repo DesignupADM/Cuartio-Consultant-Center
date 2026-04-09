@@ -5,7 +5,8 @@ import {
   setDoc, 
   addDoc,
   serverTimestamp, 
-  getDoc 
+  getDoc,
+  runTransaction,
 } from "firebase/firestore";
 
 export interface ApplicantData {
@@ -41,23 +42,24 @@ export async function applyToOpportunity(
   userData: { uid: string; firstName: string; lastName: string; email: string; country: string }
 ): Promise<void> {
   const applicantRef = doc(db, "opportunities", opportunityId, "applicants", userData.uid);
-  
-  // Check if already applied
-  const existingDoc = await getDoc(applicantRef);
-  if (existingDoc.exists()) {
-    throw new Error("You have already applied for this opportunity.");
-  }
 
-  const applicantData: ApplicantData = {
-    uid: userData.uid,
-    name: `${userData.firstName} ${userData.lastName}`,
-    email: userData.email,
-    location: userData.country || "Not specified",
-    status: 'applied',
-    appliedDate: serverTimestamp()
-  };
+  await runTransaction(db, async (transaction) => {
+    const existingDoc = await transaction.get(applicantRef);
+    if (existingDoc.exists()) {
+      throw new Error("You have already applied for this opportunity.");
+    }
 
-  await setDoc(applicantRef, applicantData);
+    const applicantData: ApplicantData = {
+      uid: userData.uid,
+      name: `${userData.firstName} ${userData.lastName}`,
+      email: userData.email,
+      location: userData.country || "Not specified",
+      status: 'applied',
+      appliedDate: serverTimestamp()
+    };
+
+    transaction.set(applicantRef, applicantData);
+  });
 }
 
 /**

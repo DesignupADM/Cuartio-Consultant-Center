@@ -1,13 +1,13 @@
 
 "use client"
 
-import { useState, useMemo, useEffect, Suspense, useCallback } from "react"
+import { useState, useMemo, useEffect, Suspense } from "react"
 import { DashboardLayout } from "@/components/dashboard-layout"
+import { PageLoadingState, StatePanel, TableStatusRow } from "@/components/dashboard-feedback"
 import { Card, CardContent, CardHeader, CardTitle, CardFooter, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { 
-  Globe, 
   MapPin, 
   Calendar, 
   Plus, 
@@ -16,21 +16,14 @@ import {
   Sparkles,
   Loader2,
   ChevronLeft,
-  Mail,
   UserCheck,
   UserX,
   Clock,
-  ExternalLink,
-  Share2,
   Table as TableIcon,
   ChevronRight,
-  User as UserIcon,
-  MoreHorizontal,
-  Briefcase,
   FileText,
   CheckCircle2
 } from "lucide-react"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
   Dialog, 
   DialogContent, 
@@ -55,15 +48,8 @@ import { useToast } from "@/hooks/use-toast"
 import { useUser } from "@/firebase/auth/use-user"
 import { matchConsultants, type MatchConsultantsOutput } from "@/ai/flows/match-consultants-flow"
 import { Separator } from "@/components/ui/separator"
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger,
-  DropdownMenuSeparator
-} from "@/components/ui/dropdown-menu"
 import { useFirestore, useCollection } from "@/firebase"
-import { collection, updateDoc, doc, serverTimestamp, query, orderBy, getDocs } from "firebase/firestore"
+import { collection, collectionGroup, updateDoc, doc, query, orderBy, onSnapshot, where } from "firebase/firestore"
 import { applyToOpportunity, createOpportunity, type Opportunity } from "@/firebase/firestore/opportunities"
 import { generateOpportunity } from "@/ai/flows/generate-opportunity-flow"
 import { errorEmitter } from "@/firebase/error-emitter"
@@ -88,7 +74,7 @@ function OpportunitiesContent() {
   const db = useFirestore()
 
   const oppsQuery = useMemo(() => query(collection(db, "opportunities"), orderBy("createdAt", "desc")), [db])
-  const { data: opportunities, loading: oppsLoading } = useCollection<Opportunity>(oppsQuery as any)
+  const { data: opportunities, loading: oppsLoading, error: opportunitiesError } = useCollection<Opportunity>(oppsQuery as any)
 
   const [searchQuery, setSearchQuery] = useState("")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -100,7 +86,7 @@ function OpportunitiesContent() {
     return collection(db, "opportunities", activeOpportunity.id, "applicants")
   }, [db, activeOpportunity])
   
-  const { data: applicants, loading: applicantsLoading } = useCollection<Applicant>(applicantsQuery as any)
+  const { data: applicants, loading: applicantsLoading, error: applicantsError } = useCollection<Applicant>(applicantsQuery as any)
 
   const [isMatching, setIsMatching] = useState(false)
   const [aiMatches, setAiMatches] = useState<MatchConsultantsOutput | null>(null)
@@ -127,24 +113,26 @@ function OpportunitiesContent() {
     )
   }, [opportunities, searchQuery])
 
-  // Fetch applied opportunities for current consultant
   useEffect(() => {
-    if (role !== 'consultant' || !profile?.uid) return;
-    
-    // This is a temporary way to fetch all applications before implementing Collection Group Queries
-    const fetchApplications = async () => {
-      const applied = new Set<string>();
-      for (const opp of opportunities || []) {
-        const appRef = doc(db, "opportunities", opp.id, "applicants", profile.uid);
-        const appSnap = await getDocs(query(collection(db, "opportunities", opp.id, "applicants"), orderBy("appliedDate")));
-        // Actually, let's just use a more efficient check if possible, or just wait for collection group
-        // For simplicity in this step, I'll just check the specific doc
-        const singleApp = await doc(db, "opportunities", opp.id, "applicants", profile.uid);
-        // Wait, I'll use a better approach: 
-      }
-    };
-    // fetchApplications();
-  }, [opportunities, profile, role, db]);
+    if (role !== "consultant" || !profile?.uid) {
+      setAppliedOpps(new Set())
+      return
+    }
+
+    const appliedQuery = query(collectionGroup(db, "applicants"), where("uid", "==", profile.uid))
+    const unsubscribe = onSnapshot(appliedQuery, (snapshot) => {
+      const nextApplied = new Set<string>()
+      snapshot.docs.forEach((document) => {
+        const opportunityId = document.ref.parent.parent?.id
+        if (opportunityId) {
+          nextApplied.add(opportunityId)
+        }
+      })
+      setAppliedOpps(nextApplied)
+    })
+
+    return () => unsubscribe()
+  }, [db, profile?.uid, role])
 
   const handleApply = async (oppId: string) => {
     if (!profile) return;
@@ -281,7 +269,7 @@ function OpportunitiesContent() {
               <div className="h-10 w-px bg-border hidden md:block" />
               <div>
                 <h1 className="text-3xl font-bold tracking-tight text-primary font-headline max-w-2xl truncate">{activeOpportunity.title}</h1>
-                <div className="flex items-center gap-3 mt-1.5">
+          <div className="flex items-center gap-3 mt-1.5">
                   <Badge variant="secondary" className="bg-accent/10 text-accent-foreground border-none font-black uppercase tracking-widest text-[10px]">
                     {activeOpportunity.region}
                   </Badge>
@@ -290,11 +278,6 @@ function OpportunitiesContent() {
                   </span>
                 </div>
               </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
-                <Share2 className="h-4 w-4 mr-2" /> Share
-              </Button>
             </div>
           </div>
 
@@ -365,9 +348,11 @@ function OpportunitiesContent() {
                   </TableHeader>
                   <TableBody>
                     {applicantsLoading ? (
-                      <TableRow><TableCell colSpan={4} className="h-48 text-center">Loading applicants...</TableCell></TableRow>
+                      <TableStatusRow colSpan={4} message="Loading applicants..." loading />
+                    ) : applicantsError ? (
+                      <TableStatusRow colSpan={4} message="Applicants could not be loaded right now." tone="error" />
                     ) : (applicants || []).length === 0 ? (
-                      <TableRow><TableCell colSpan={4} className="h-48 text-center">No applicants yet.</TableCell></TableRow>
+                      <TableStatusRow colSpan={4} message="No applicants have been submitted for this project yet." />
                     ) : (
                       applicants?.map(app => (
                         <TableRow key={app.id} className="group transition-colors hover:bg-muted/20">
@@ -409,16 +394,6 @@ function OpportunitiesContent() {
                               >
                                 <UserX className="h-4 w-4" />
                               </Button>
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button size="sm" variant="ghost" className="h-8 w-8 p-0 rounded-full"><MoreHorizontal className="h-4 w-4" /></Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-48">
-                                  <DropdownMenuItem className="text-xs font-bold"><UserIcon className="h-3.5 w-3.5 mr-2" /> View Detailed Profile</DropdownMenuItem>
-                                  <DropdownMenuSeparator />
-                                  <DropdownMenuItem className="text-xs font-bold text-rose-600"><UserX className="h-3.5 w-3.5 mr-2" /> Remove</DropdownMenuItem>
-                                </DropdownMenuContent>
-                              </DropdownMenu>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -444,7 +419,7 @@ function OpportunitiesContent() {
                           <span className="text-3xl font-black text-white">{m.matchScore}%</span>
                         </div>
                         <p className="text-sm text-white/90 leading-relaxed italic border-l-4 border-accent pl-5">
-                          "{m.reasoning}"
+                          &quot;{m.reasoning}&quot;
                         </p>
                       </div>
                     ))}
@@ -694,9 +669,17 @@ function OpportunitiesContent() {
           className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"
         >
           {oppsLoading ? (
-            <div className="col-span-full py-24 text-center">Loading opportunities...</div>
+            <div className="col-span-full">
+              <StatePanel title="Loading opportunities" description="We are syncing the latest project list now." />
+            </div>
+          ) : opportunitiesError ? (
+            <div className="col-span-full">
+              <StatePanel title="Could not load opportunities" description="Please refresh or try again in a moment." />
+            </div>
           ) : filteredOpportunities.length === 0 ? (
-            <div className="col-span-full py-24 text-center">No matching projects found.</div>
+            <div className="col-span-full">
+              <StatePanel title="No matching projects" description="Try a different search term or clear the current filter." />
+            </div>
           ) : (
             <AnimatePresence mode="popLayout">
               {filteredOpportunities.map((opp) => (
@@ -764,7 +747,7 @@ function OpportunitiesContent() {
 
 export default function OpportunitiesPage() {
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading Hub...</div>}>
+    <Suspense fallback={<PageLoadingState message="Loading opportunities hub..." />}>
       <OpportunitiesContent />
     </Suspense>
   )

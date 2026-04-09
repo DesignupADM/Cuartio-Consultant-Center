@@ -13,12 +13,11 @@ import { FirestorePermissionError } from '../errors';
 
 export function useCollection<T = DocumentData>(query: Query<T> | null) {
   const [data, setData] = useState<T[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(query));
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (!query) {
-      setLoading(false);
       return;
     }
 
@@ -41,6 +40,10 @@ export function useCollection<T = DocumentData>(query: Query<T> | null) {
 
     return () => unsubscribe();
   }, [query]);
+
+  if (!query) {
+    return { data: [], loading: false, error: null };
+  }
 
   return { data, loading, error };
 }

@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useMemo, Suspense } from "react"
+import Image from "next/image"
+import { PageLoadingState } from "@/components/dashboard-feedback"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { 
   Table, 
@@ -83,7 +85,7 @@ type Consultant = {
 
 export default function DirectoryPage() {
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center">Loading Directory...</div>}>
+    <Suspense fallback={<PageLoadingState message="Loading consultant directory..." />}>
       <DirectoryContent />
     </Suspense>
   )
@@ -515,9 +517,15 @@ function DirectoryContent() {
                   </TableCell>
                   <TableCell className="py-4">
                     <div className="flex items-center gap-4">
-                      <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center overflow-hidden shrink-0 border border-primary/10 shadow-sm">
-                        {consultant.avatarUrl ? (
-                          <img src={consultant.avatarUrl} alt="" className="h-full w-full object-cover" />
+                        <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center overflow-hidden shrink-0 border border-primary/10 shadow-sm">
+                          {consultant.avatarUrl ? (
+                          <Image
+                            src={consultant.avatarUrl}
+                            alt={`${consultant.firstName} ${consultant.lastName}`}
+                            width={40}
+                            height={40}
+                            className="h-full w-full object-cover"
+                          />
                         ) : (
                           <User className="h-5 w-5 text-primary/60" />
                         )}
@@ -589,7 +597,13 @@ function DirectoryContent() {
                     <div className="flex items-center gap-3">
                       <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary overflow-hidden">
                         {activeConsultant.avatarUrl ? (
-                          <img src={activeConsultant.avatarUrl} alt="" className="h-full w-full object-cover" />
+                          <Image
+                            src={activeConsultant.avatarUrl}
+                            alt={`${activeConsultant.firstName} ${activeConsultant.lastName}`}
+                            width={48}
+                            height={48}
+                            className="h-full w-full object-cover"
+                          />
                         ) : (
                           <User className="h-6 w-6" />
                         )}
@@ -635,7 +649,7 @@ function DirectoryContent() {
                 <div>
                   <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Professional Bio</h4>
                   <p className="text-sm leading-relaxed text-foreground/80 italic border-l-4 border-accent pl-4">
-                    "{activeConsultant.bio}"
+                    &quot;{activeConsultant.bio}&quot;
                   </p>
                 </div>
 

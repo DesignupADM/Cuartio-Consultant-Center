@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
+import { StatePanel } from "@/components/dashboard-feedback"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useUser } from "@/firebase/auth/use-user"
 import { useFirestore, useCollection } from "@/firebase"
-import { collection, query, where, orderBy } from "firebase/firestore"
+import { collection, collectionGroup, onSnapshot, orderBy, query, where } from "firebase/firestore"
 import { 
   Users, 
   Briefcase, 
@@ -14,7 +15,6 @@ import {
   ArrowUpRight, 
   TrendingUp, 
   Sparkles, 
-  Clock, 
   Globe,
   ChevronRight 
 } from "lucide-react"
@@ -32,6 +32,32 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 
+type ConsultantProfileRecord = {
+  id: string
+  firstName?: string
+  lastName?: string
+  profession?: string
+  sector?: string
+  status?: string
+  createdAt?: { toDate?: () => Date } | string | null
+}
+
+type OpportunityRecord = {
+  id: string
+  title: string
+  sector?: string
+  location?: string
+  deadline?: string
+  status?: "open" | "closed" | "draft"
+}
+
+type ConsultantApplicationRecord = {
+  id: string
+  opportunityId: string
+  status: "applied" | "accepted" | "declined"
+  appliedDate?: { toDate?: () => Date } | string | null
+}
+
 const chartConfig = {
   apps: {
     label: "Registrations",
@@ -46,6 +72,18 @@ const chartConfig = {
 
 import { motion, Variants } from "framer-motion"
 
+function toDate(value: { toDate?: () => Date } | string | null | undefined): Date | null {
+  if (!value) return null
+  if (typeof value === "string") {
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? null : parsed
+  }
+  if (typeof value.toDate === "function") {
+    return value.toDate()
+  }
+  return null
+}
+
 export default function DashboardPage() {
   const { profile } = useUser()
   const db = useFirestore()
@@ -53,25 +91,139 @@ export default function DashboardPage() {
 
   // Fetch live stats
   const consultantsQuery = useMemo(() => role === "admin" ? query(collection(db, "consultantProfiles")) : null, [db, role])
-  const { data: consultants, loading: consultantsLoading } = useCollection<any>(consultantsQuery as any)
+  const { data: consultants, loading: consultantsLoading } = useCollection<ConsultantProfileRecord>(consultantsQuery as any)
 
   const opportunitiesQuery = useMemo(() => query(collection(db, "opportunities")), [db])
-  const { data: opportunities, loading: opportunitiesLoading } = useCollection<any>(opportunitiesQuery as any)
+  const { data: opportunities, loading: opportunitiesLoading } = useCollection<OpportunityRecord>(opportunitiesQuery as any)
+
+  const [applications, setApplications] = useState<ConsultantApplicationRecord[]>([])
+  const [applicationsLoading, setApplicationsLoading] = useState(role === "consultant")
+
+  useEffect(() => {
+    if (role !== "consultant" || !profile?.uid) {
+      setApplications([])
+      setApplicationsLoading(false)
+      return
+    }
+
+    setApplicationsLoading(true)
+
+    const applicationsQuery = query(collectionGroup(db, "applicants"), where("uid", "==", profile.uid))
+    const unsubscribe = onSnapshot(
+      applicationsQuery,
+      (snapshot) => {
+        const nextApplications = snapshot.docs
+          .map((document): ConsultantApplicationRecord | null => {
+            const opportunityId = document.ref.parent.parent?.id
+            if (!opportunityId) return null
+
+            const data = document.data() as {
+              status?: ConsultantApplicationRecord["status"]
+              appliedDate?: ConsultantApplicationRecord["appliedDate"]
+            }
+
+            return {
+              id: document.id,
+              opportunityId,
+              status: data.status || "applied",
+              appliedDate: data.appliedDate,
+            }
+          })
+          .filter((application): application is ConsultantApplicationRecord => application !== null)
+
+        setApplications(
+          nextApplications
+        )
+        setApplicationsLoading(false)
+      },
+      () => {
+        setApplications([])
+        setApplicationsLoading(false)
+      }
+    )
+
+    return () => unsubscribe()
+  }, [db, profile?.uid, role])
 
   const isProfileIncomplete = role === "consultant" && 
     (!profile?.bio || !profile?.sector || !profile?.profession || !profile?.country);
 
+  const openOpportunities = useMemo(
+    () => (opportunities || []).filter((opportunity) => opportunity.status === "open"),
+    [opportunities]
+  )
+
+  const matchedOpportunities = useMemo(() => {
+    if (!profile?.sector) return openOpportunities
+    return openOpportunities.filter((opportunity) => opportunity.sector === profile.sector)
+  }, [openOpportunities, profile?.sector])
+
+  const activeApplicationsCount = useMemo(
+    () => applications.filter((application) => application.status !== "declined").length,
+    [applications]
+  )
+
+  const shortlistedApplicationsCount = useMemo(
+    () => applications.filter((application) => application.status === "accepted").length,
+    [applications]
+  )
+
+  const profileCompletion = useMemo(() => {
+    const requiredFields = [
+      profile?.firstName,
+      profile?.lastName,
+      profile?.profession,
+      profile?.sector,
+      profile?.country,
+      profile?.bio,
+      profile?.email,
+    ]
+
+    const completedFields = requiredFields.filter(Boolean).length
+    return Math.round((completedFields / requiredFields.length) * 100)
+  }, [profile?.bio, profile?.country, profile?.email, profile?.firstName, profile?.lastName, profile?.profession, profile?.sector])
+
+  const opportunityLookup = useMemo(() => {
+    return new Map((opportunities || []).map((opportunity) => [opportunity.id, opportunity]))
+  }, [opportunities])
+
+  const consultantActivityFeed = useMemo(() => {
+    return [...applications]
+      .sort((left, right) => {
+        const leftTime = toDate(left.appliedDate)?.getTime() || 0
+        const rightTime = toDate(right.appliedDate)?.getTime() || 0
+        return rightTime - leftTime
+      })
+      .slice(0, 4)
+      .map((application) => {
+        const opportunity = opportunityLookup.get(application.opportunityId)
+        const appliedDate = toDate(application.appliedDate)
+        const statusLabel = application.status === "accepted"
+          ? "Shortlisted"
+          : application.status === "declined"
+            ? "Declined"
+            : "Under review"
+
+        return {
+          ...application,
+          title: opportunity?.title || "Opportunity",
+          timestampLabel: appliedDate ? appliedDate.toLocaleDateString() : "Recently updated",
+          statusLabel,
+        }
+      })
+  }, [applications, opportunityLookup])
+
   const adminStats = [
     { title: "Total Consultants", value: consultantsLoading ? "..." : (consultants?.length || 0).toLocaleString(), description: "+12% growth this month", icon: Users, color: "bg-blue-50 text-blue-600", href: `/dashboard/directory` },
-    { title: "Active Opportunities", value: opportunitiesLoading ? "..." : (opportunities?.filter((o: any) => o.status === 'open').length || 0).toString(), description: "Live mandates", icon: Briefcase, color: "bg-emerald-50 text-emerald-600", href: `/dashboard/opportunities` },
+    { title: "Active Opportunities", value: opportunitiesLoading ? "..." : openOpportunities.length.toString(), description: "Currently open mandates", icon: Briefcase, color: "bg-emerald-50 text-emerald-600", href: `/dashboard/opportunities` },
     { title: "Profile Index", value: consultantsLoading ? "..." : (consultants?.filter((c: any) => c.status === 'pending').length || 0).toString(), description: "Pending verification", icon: Database, color: "bg-amber-50 text-amber-600", href: `/dashboard/directory` },
     { title: "Network Status", value: "Active", description: "All services operational", icon: Globe, color: "bg-accent/10 text-accent-foreground", href: `/dashboard/notifications` }
   ]
 
   const consultantStats = [
-    { title: "Active Applications", value: "2", description: "Under review", icon: Briefcase, color: "bg-blue-50 text-blue-600", href: `/dashboard/opportunities?role=consultant` },
-    { title: "Matched Opportunities", value: opportunitiesLoading ? "..." : (opportunities?.filter((o: any) => o.status === 'open').length || 0).toString(), description: "Based on your expertise", icon: Sparkles, color: "bg-emerald-50 text-emerald-600", href: `/dashboard/opportunities?role=consultant` },
-    { title: "Profile Strength", value: isProfileIncomplete ? "60%" : "100%", description: isProfileIncomplete ? "Needs completion" : "Optimal profile data", icon: Database, color: isProfileIncomplete ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600", href: `/dashboard/profile` },
+    { title: "Active Applications", value: applicationsLoading ? "..." : activeApplicationsCount.toString(), description: shortlistedApplicationsCount > 0 ? `${shortlistedApplicationsCount} shortlisted` : "Awaiting review updates", icon: Briefcase, color: "bg-blue-50 text-blue-600", href: `/dashboard/opportunities?role=consultant` },
+    { title: "Matched Opportunities", value: opportunitiesLoading ? "..." : matchedOpportunities.length.toString(), description: profile?.sector ? `Open roles in ${profile.sector}` : "Open roles across all sectors", icon: Sparkles, color: "bg-emerald-50 text-emerald-600", href: `/dashboard/opportunities?role=consultant` },
+    { title: "Profile Strength", value: `${profileCompletion}%`, description: isProfileIncomplete ? "Missing profile details" : "Core profile fields complete", icon: Database, color: isProfileIncomplete ? "bg-amber-50 text-amber-600" : "bg-emerald-50 text-emerald-600", href: `/dashboard/profile` },
     { title: "Network Status", value: "Active", description: "Platform operational", icon: Globe, color: "bg-accent/10 text-accent-foreground", href: `/dashboard/notifications?role=consultant` }
   ]
 
@@ -79,13 +231,7 @@ export default function DashboardPage() {
 
 
   const sectorData = useMemo(() => {
-    if (!consultants || consultants.length === 0) return [
-      { name: "Energy", value: 400, color: "hsl(var(--primary))" },
-      { name: "Infrastructure", value: 300, color: "hsl(var(--accent))" },
-      { name: "Tech", value: 200, color: "hsl(var(--chart-3))" },
-      { name: "Finance", value: 150, color: "hsl(var(--chart-4))" },
-      { name: "Legal", value: 100, color: "hsl(var(--chart-5))" },
-    ]
+    if (!consultants || consultants.length === 0) return []
     
     const distribution: Record<string, number> = {}
     consultants.forEach((c: any) => {
@@ -140,9 +286,9 @@ export default function DashboardPage() {
 
   const recentConsultants = useMemo(() => {
     if (!consultants || role !== "admin") return [];
-    return [...consultants].sort((a: any, b: any) => {
-      const dateA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt || 0).getTime();
-      const dateB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt || 0).getTime();
+    return [...consultants].sort((a, b) => {
+      const dateA = toDate(a.createdAt)?.getTime() || 0
+      const dateB = toDate(b.createdAt)?.getTime() || 0
       return dateB - dateA;
     }).slice(0, 4);
   }, [consultants, role]);
@@ -157,8 +303,8 @@ export default function DashboardPage() {
     let currentYearCount = 0;
     let previousYearCount = 0;
     
-    consultants.forEach((c: any) => {
-      const date = c.createdAt?.toDate ? c.createdAt.toDate() : new Date(c.createdAt || Date.now());
+    consultants.forEach((c) => {
+      const date = toDate(c.createdAt) || new Date()
       if (date.getFullYear() === currentYear) currentYearCount++;
       if (date.getFullYear() === previousYear) previousYearCount++;
     });
@@ -175,6 +321,26 @@ export default function DashboardPage() {
     
     return { yoy, totalSectors };
   }, [consultants, sectorData]);
+
+  const adminInsight = useMemo(() => {
+    const openCount = openOpportunities.length
+    const pendingCount = (consultants || []).filter((consultant) => consultant.status === "pending").length
+    const topSector = sectorData[0]
+
+    if (consultantsLoading || opportunitiesLoading) {
+      return "Refreshing consultant and opportunity signals across the network."
+    }
+
+    if (!consultants?.length && !openCount) {
+      return "The network is live, but there are no consultant profiles or open opportunities to summarize yet."
+    }
+
+    const sectorSummary = topSector
+      ? `${topSector.name} currently leads the network mix at ${Math.round((topSector.value / Math.max(statsCalculations.totalSectors, 1)) * 100)}% of consultant profiles.`
+      : "Sector coverage will appear here as profiles are added."
+
+    return `${openCount} open opportunities are visible to the network, ${pendingCount} consultant profiles are still pending verification, and ${sectorSummary}`
+  }, [consultants, consultantsLoading, openOpportunities.length, opportunitiesLoading, sectorData, statsCalculations.totalSectors])
 
   const container: Variants = {
     hidden: { opacity: 0 },
@@ -237,7 +403,7 @@ export default function DashboardPage() {
              <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Network Operational</span>
              <Separator orientation="vertical" className="h-4" />
-             <span className="text-[10px] font-bold text-muted-foreground">Updated: Just now</span>
+             <span className="text-[10px] font-bold text-muted-foreground">Updated from live records</span>
           </div>
         </div>
 
@@ -250,11 +416,11 @@ export default function DashboardPage() {
               <CardContent className="p-6 relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
-                    <Badge className="bg-white/20 text-white border-none text-[9px] font-black uppercase">Strategic Insight</Badge>
-                    <span className="text-[9px] text-white/50 uppercase font-bold">AI Generated • Just Now</span>
+                    <Badge className="bg-white/20 text-white border-none text-[9px] font-black uppercase">Strategic Snapshot</Badge>
+                    <span className="text-[9px] text-white/50 uppercase font-bold">Derived from current dashboard records</span>
                   </div>
                   <p className="text-lg font-medium leading-snug">
-                    "Network intelligence suggests a <span className="text-white font-black underline decoration-white/30 decoration-2 underline-offset-4 pointer-events-none transition-colors hover:decoration-white">28% expertise surplus</span> in Legal Strategy. Recommend re-allocating resource focus toward <span className="text-white font-black">Green Energy Technology</span> mandates in the African region."
+                    {adminInsight}
                   </p>
                 </div>
                 <Button asChild size="sm" className="bg-white text-primary hover:bg-white/90 font-bold shrink-0 shadow-lg shadow-black/5">
@@ -395,16 +561,16 @@ export default function DashboardPage() {
               <CardContent className="p-0">
                 <div className="divide-y divide-muted/30">
                   {opportunitiesLoading ? (
-                    <div className="p-8 text-center text-sm text-muted-foreground">Loading mandates...</div>
+                    <StatePanel title="Loading mandates" description="Refreshing recommended opportunities for this view." />
                   ) : opportunities && opportunities.length > 0 ? (
                     (() => {
                       const matched = opportunities
-                        .filter((o: any) => o.status === 'open' && (!profile?.sector || o.sector === profile.sector))
+                        .filter((o) => o.status === 'open' && (!profile?.sector || o.sector === profile.sector))
                         .slice(0, 3);
                       
                       const display = matched.length > 0 ? matched : opportunities.slice(0, 3);
                       
-                      return display.map((opp: any, i: number) => (
+                      return display.map((opp, i: number) => (
                         <div key={opp.id || i} className="flex flex-col sm:flex-row sm:items-center justify-between p-6 hover:bg-muted/10 transition-colors group">
                           <div className="flex items-start gap-4">
                             <div className="h-12 w-12 rounded-xl bg-primary/5 flex items-center justify-center border border-primary/10 shrink-0">
@@ -425,7 +591,7 @@ export default function DashboardPage() {
                       ));
                     })()
                   ) : (
-                    <div className="p-8 text-center text-sm text-muted-foreground">No matching mandates found right now. Check back later!</div>
+                    <StatePanel title="No matching mandates" description="There are no open opportunities that match this view yet." />
                   )}
                 </div>
               </CardContent>
@@ -482,7 +648,7 @@ export default function DashboardPage() {
                           New verification request: {c.firstName} {c.lastName}
                         </p>
                         <p className="text-[10px] text-muted-foreground mt-1 font-medium">
-                          {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : 'Recently'} • {c.profession || 'Consultant'}
+                          {toDate(c.createdAt)?.toLocaleDateString() || 'Recently'} • {c.profession || 'Consultant'}
                         </p>
                       </div>
                       <ChevronRight className="h-4 w-4 text-muted-foreground/30 transition-transform group-hover:translate-x-1" />
@@ -491,20 +657,26 @@ export default function DashboardPage() {
                     <div className="p-8 text-center text-sm text-muted-foreground">No recent registrations.</div>
                   )
                 ) : (
-                  [1, 2, 3, 4].map((i) => (
-                    <div key={i} className="flex items-center p-5 hover:bg-muted/10 transition-colors group cursor-pointer">
+                  applicationsLoading ? (
+                    <StatePanel title="Loading application updates" description="Checking your latest opportunity activity." />
+                  ) : consultantActivityFeed.length > 0 ? (
+                    consultantActivityFeed.map((application) => (
+                    <div key={application.id} className="flex items-center p-5 hover:bg-muted/10 transition-colors group cursor-pointer">
                       <div className="h-10 w-10 rounded-2xl bg-primary/5 flex items-center justify-center border border-primary/10 transition-transform group-hover:scale-105">
-                        <Clock className="h-5 w-5 text-primary" />
+                        <Briefcase className="h-5 w-5 text-primary" />
                       </div>
                       <div className="ml-4 flex-1">
                         <p className="text-sm font-bold text-foreground leading-tight">
-                          Application under secondary review: Urban Planning - Brazil
+                          {application.statusLabel}: {application.title}
                         </p>
-                        <p className="text-[10px] text-muted-foreground mt-1 font-medium">{i * 2} hours ago • Automated Message</p>
+                        <p className="text-[10px] text-muted-foreground mt-1 font-medium">{application.timestampLabel} • Application status</p>
                       </div>
                       <ChevronRight className="h-4 w-4 text-muted-foreground/30 transition-transform group-hover:translate-x-1" />
                     </div>
                   ))
+                  ) : (
+                    <StatePanel title="No applications yet" description="Your recent opportunity activity will appear here after you apply." />
+                  )
                 )}
               </div>
             </CardContent>
@@ -520,7 +692,7 @@ export default function DashboardPage() {
             <CardContent className="p-6">
               <div className="space-y-4">
                 {opportunitiesLoading ? (
-                  <div className="text-center py-8 text-muted-foreground text-sm">Loading deadlines...</div>
+                  <StatePanel title="Loading deadlines" description="Checking the nearest opportunity closing dates." />
                 ) : opportunities && opportunities.length > 0 ? (
                   opportunities
                     .filter((o: any) => o.status === 'open' && o.deadline)

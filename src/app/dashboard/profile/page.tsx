@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
+import Image from "next/image"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -225,7 +226,13 @@ export default function ProfilePage() {
               <div className="relative group">
                 <div className="h-24 w-24 rounded-full bg-muted flex items-center justify-center overflow-hidden border-4 border-background ring-2 ring-primary/20">
                   {profile.avatarUrl ? (
-                    <img src={profile.avatarUrl} alt="Avatar" className="h-full w-full object-cover" />
+                    <Image
+                      src={profile.avatarUrl}
+                      alt="Avatar"
+                      width={96}
+                      height={96}
+                      className="h-full w-full object-cover"
+                    />
                   ) : (
                     <UserIcon className="h-10 w-10 text-muted-foreground" />
                   )}

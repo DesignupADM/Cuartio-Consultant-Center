@@ -1,5 +1,6 @@
 "use client"
 
+import { StatePanel, TableStatusRow } from "@/components/dashboard-feedback"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -9,13 +10,6 @@ import { Textarea } from "@/components/ui/textarea"
 import { Send, History, CircleCheck, CircleAlert } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useUser } from "@/firebase/auth/use-user"
-
-const notificationLogs = [
-  { id: 1, recipient: "Alice Johnson", type: "Profile Update Reminder", status: "Sent", timestamp: "2024-03-20 10:30" },
-  { id: 2, recipient: "System Broadcast", type: "New Opportunity Alert", status: "Sent", timestamp: "2024-03-19 15:45" },
-  { id: 3, recipient: "Bernardo Silva", type: "CV Verification Success", status: "Failed", timestamp: "2024-03-19 12:00" },
-  { id: 4, recipient: "Fatima Al-Zahra", type: "Password Reset Request", status: "Sent", timestamp: "2024-03-18 09:15" },
-]
 
 import { useFirestore, useCollection } from "@/firebase"
 import { collection, query, orderBy, addDoc, serverTimestamp } from "firebase/firestore"
@@ -32,7 +26,7 @@ export default function NotificationsPage() {
 
   // Fetch live system logs
   const logsQuery = useMemo(() => query(collection(db, "systemLogs"), orderBy("timestamp", "desc")), [db])
-  const { data: logs, loading: logsLoading } = useCollection<any>(logsQuery as any)
+  const { data: logs, loading: logsLoading, error: logsError } = useCollection<any>(logsQuery as any)
 
   const handleSendNotification = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -43,8 +37,6 @@ export default function NotificationsPage() {
     const message = formData.get("message") as string
 
     try {
-      // In a real app, you'd look up the consultantId by email
-      // For now, we assume recipient is the consultantId for testing
       const consultantId = recipient === 'ALL' ? 'broadcast' : recipient
       
       const notificationData = {
@@ -105,7 +97,7 @@ export default function NotificationsPage() {
             <CardContent>
               <form onSubmit={handleSendNotification} className="space-y-5">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Recipient UID or 'ALL'</label>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Recipient UID or &apos;ALL&apos;</label>
                   <Input name="recipient" placeholder="Enter consultant UID..." className="bg-muted/30 border-none h-11" required />
                 </div>
                 <div className="space-y-2">
@@ -146,9 +138,11 @@ export default function NotificationsPage() {
                     <TableBody>
                       <AnimatePresence mode="popLayout">
                         {logsLoading ? (
-                          <TableRow><TableCell colSpan={3} className="text-center py-12 text-muted-foreground animate-pulse">Loading logs...</TableCell></TableRow>
+                          <TableStatusRow colSpan={3} message="Loading logs..." loading />
+                        ) : logsError ? (
+                          <TableStatusRow colSpan={3} message="System logs could not be loaded right now." tone="error" />
                         ) : logs?.length === 0 ? (
-                          <TableRow><TableCell colSpan={3} className="text-center py-12 text-muted-foreground italic">No notification history found.</TableCell></TableRow>
+                          <TableStatusRow colSpan={3} message="No notification history has been recorded yet." />
                         ) : (
                           logs.map((log: any, index: number) => (
                             <motion.tr 
@@ -169,7 +163,7 @@ export default function NotificationsPage() {
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-right text-[10px] font-black text-muted-foreground pr-6">
-                                {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : "Just now"}
+                                {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : "Pending timestamp"}
                               </TableCell>
                             </motion.tr>
                           ))

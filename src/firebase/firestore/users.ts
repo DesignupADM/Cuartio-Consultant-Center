@@ -1,5 +1,5 @@
 
-import { doc, getDoc, setDoc, Firestore } from "firebase/firestore";
+import { doc, getDoc, setDoc, writeBatch, Firestore } from "firebase/firestore";
 
 export interface UserProfile {
   uid: string;
@@ -25,9 +25,13 @@ export interface UserProfile {
 }
 
 export async function getUserProfile(db: Firestore, uid: string): Promise<UserProfile | null> {
-  // Check Admin Roles
   const adminDocRef = doc(db, "adminRoles", uid);
-  const adminDocSnap = await getDoc(adminDocRef);
+  const consultantRoleDocRef = doc(db, "consultantRoles", uid);
+
+  const [adminDocSnap, consultantRoleDocSnap] = await Promise.all([
+    getDoc(adminDocRef),
+    getDoc(consultantRoleDocRef),
+  ]);
 
   if (adminDocSnap.exists()) {
     return {
@@ -36,12 +40,7 @@ export async function getUserProfile(db: Firestore, uid: string): Promise<UserPr
     };
   }
 
-  // Check Consultant Roles
-  const consultantRoleDocRef = doc(db, "consultantRoles", uid);
-  const consultantRoleDocSnap = await getDoc(consultantRoleDocRef);
-
   if (consultantRoleDocSnap.exists()) {
-    // If they have the role, fetch their profile data
     const profileDocRef = doc(db, "consultantProfiles", uid);
     const profileDocSnap = await getDoc(profileDocRef);
 
@@ -67,13 +66,16 @@ export async function createUserProfile(db: Firestore, profile: UserProfile): Pr
     const adminDocRef = doc(db, "adminRoles", profile.uid);
     await setDoc(adminDocRef, { enabled: true });
   } else {
+    const batch = writeBatch(db);
     const roleDocRef = doc(db, "consultantRoles", profile.uid);
-    await setDoc(roleDocRef, { enabled: true });
-
     const profileDocRef = doc(db, "consultantProfiles", profile.uid);
-    await setDoc(profileDocRef, {
+
+    batch.set(roleDocRef, { enabled: true });
+    batch.set(profileDocRef, {
       ...profile,
       id: profile.uid // Ensure ID matches UID as required by rules
     });
+
+    await batch.commit();
   }
 }

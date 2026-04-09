@@ -28,7 +28,7 @@ import {
   X
 } from "lucide-react"
 import { useFirestore, useCollection, useDoc } from "@/firebase"
-import { collection, query, where, doc, setDoc, updateDoc, deleteDoc, addDoc, orderBy } from "firebase/firestore"
+import { collection, query, where, doc, setDoc, updateDoc, deleteDoc, addDoc, orderBy, runTransaction } from "firebase/firestore"
 import { errorEmitter } from "@/firebase/error-emitter"
 import { FirestorePermissionError } from "@/firebase/errors"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -95,16 +95,28 @@ export default function AdminPanelPage() {
     const formData = new FormData(e.currentTarget)
     const label = formData.get("label") as string
     const optionsRaw = formData.get("options") as string
-    
-    const newQuestion = {
-      label,
-      type: newQuestionType,
-      required: formData.get("required") === "on",
-      order: questions.length,
-      options: newQuestionType === "select" ? optionsRaw.split(",").map(o => o.trim()).filter(o => !!o) : []
-    }
 
-    addDoc(collection(db, "settings", "registration", "questions"), newQuestion)
+    const questionsRef = collection(db, "settings", "registration", "questions")
+    const newQuestionRef = doc(questionsRef)
+    const registrationSettingsRef = doc(db, "settings", "registration")
+
+    runTransaction(db, async (transaction) => {
+      const registrationSettingsSnap = await transaction.get(registrationSettingsRef)
+      const nextQuestionOrder = Number(
+        registrationSettingsSnap.exists()
+          ? registrationSettingsSnap.data().nextQuestionOrder ?? questions.length
+          : questions.length
+      )
+
+      transaction.set(newQuestionRef, {
+        label,
+        type: newQuestionType,
+        required: formData.get("required") === "on",
+        order: nextQuestionOrder,
+        options: newQuestionType === "select" ? optionsRaw.split(",").map(o => o.trim()).filter(o => !!o) : []
+      })
+      transaction.set(registrationSettingsRef, { nextQuestionOrder: nextQuestionOrder + 1 }, { merge: true })
+    })
       .then(() => {
         toast({ title: "Question Added", description: "Registration form updated." })
         ;(e.target as HTMLFormElement).reset()
@@ -113,7 +125,7 @@ export default function AdminPanelPage() {
         errorEmitter.emit('permission-error', new FirestorePermissionError({
           path: "settings/registration/questions",
           operation: 'create',
-          requestResourceData: newQuestion
+          requestResourceData: { label, type: newQuestionType }
         }))
       })
   }

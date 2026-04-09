@@ -13,12 +13,11 @@ import { FirestorePermissionError } from '../errors';
 
 export function useDoc<T = DocumentData>(ref: DocumentReference<T> | null) {
   const [data, setData] = useState<T | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(ref));
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
     if (!ref) {
-      setLoading(false);
       return;
     }
 
@@ -41,6 +40,10 @@ export function useDoc<T = DocumentData>(ref: DocumentReference<T> | null) {
 
     return () => unsubscribe();
   }, [ref]);
+
+  if (!ref) {
+    return { data: null, loading: false, error: null };
+  }
 
   return { data, loading, error };
 }

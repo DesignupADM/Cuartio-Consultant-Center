@@ -2,7 +2,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useSearchParams } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { 
   Briefcase, 
   Database, 
@@ -67,8 +67,7 @@ const items = [
 
 export function NavMain({ role = "admin" }: { role?: "admin" | "consultant" }) {
   const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const currentRole = role || searchParams.get("role") || "admin"
+  const currentRole = role
 
   const filteredItems = items.filter(
     (item) => item.role === "all" || item.role === currentRole
@@ -80,8 +79,6 @@ export function NavMain({ role = "admin" }: { role?: "admin" | "consultant" }) {
       <SidebarMenu>
         {filteredItems.map((item) => {
           const isActive = pathname === item.url
-          // Maintain role parameter in navigation for prototype flow
-          const navUrl = `${item.url}?role=${currentRole}`
           
           return (
             <SidebarMenuItem key={item.title}>
@@ -90,7 +87,7 @@ export function NavMain({ role = "admin" }: { role?: "admin" | "consultant" }) {
                 isActive={isActive}
                 tooltip={item.title}
               >
-                <Link href={navUrl}>
+                <Link href={item.url}>
                   <item.icon />
                   <span>{item.title}</span>
                 </Link>
