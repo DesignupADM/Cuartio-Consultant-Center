@@ -2,6 +2,7 @@
 "use client"
 
 import * as React from "react"
+import Image from "next/image"
 import { 
   LogOut, 
   Search, 
@@ -55,18 +56,38 @@ function DashboardShell({
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon" className="border-r border-border/50">
-        <SidebarHeader className="h-16 flex items-center justify-center border-b px-6 bg-card/50 backdrop-blur">
-          <Link href={`/dashboard?role=${role}`} className="flex items-center gap-3 font-headline font-bold text-primary group-data-[collapsible=icon]:hidden transition-all hover:opacity-80">
-            <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/20 transform -rotate-3">
-              <span className="text-xl font-black">C</span>
-            </div>
-            <div className="flex flex-col leading-none">
-              <span className="text-lg tracking-tighter">ConnectFlow</span>
-              <span className="text-[10px] text-accent font-black uppercase tracking-widest mt-0.5">Pro System</span>
-            </div>
+        <SidebarHeader className="h-16 flex items-start justify-center border-b px-6 bg-card/50 backdrop-blur-sm">
+          <Link href={`/dashboard?role=${role}`} className="flex items-center gap-3 group-data-[collapsible=icon]:hidden transition-all hover:opacity-80">
+            <Image 
+              src="/logo-color.png" 
+              alt="CIF Logo" 
+              width={160} 
+              height={40} 
+              className="h-8 w-auto dark:hidden" 
+            />
+            <Image 
+              src="/logo-white.png" 
+              alt="CIF Logo" 
+              width={160} 
+              height={40} 
+              className="h-8 w-auto hidden dark:block" 
+            />
           </Link>
-          <div className="hidden group-data-[collapsible=icon]:flex h-9 w-9 rounded-xl bg-primary items-center justify-center text-primary-foreground shadow-lg shadow-primary/20">
-            <span className="text-xl font-black">C</span>
+          <div className="hidden group-data-[collapsible=icon]:flex h-8 w-8 items-center justify-center overflow-hidden">
+            <div className="relative w-16 h-8 -left-1 shrink-0">
+              <Image 
+                src="/logo-color.png" 
+                alt="CIF Icon" 
+                fill
+                className="object-contain object-left dark:hidden" 
+              />
+              <Image 
+                src="/logo-white.png" 
+                alt="CIF Icon" 
+                fill
+                className="object-contain object-left hidden dark:block" 
+              />
+            </div>
           </div>
         </SidebarHeader>
         <SidebarContent className="bg-card/30">
@@ -77,7 +98,7 @@ function DashboardShell({
             <SidebarMenuItem>
               <SidebarMenuButton size="lg" asChild className="hover:bg-primary/5 rounded-xl transition-colors">
                 <Link href={`/dashboard/profile?role=${role}`}>
-                  <Avatar className="h-10 w-10 rounded-xl border-2 border-primary/10 shadow-sm">
+                  <Avatar className="h-10 w-10 rounded-xl border-2 border-primary/10 shadow-xs">
                     <AvatarImage src={user?.photoURL || "https://picsum.photos/seed/user/80/80"} />
                     <AvatarFallback className="rounded-xl bg-primary/10 text-primary font-bold">
                       {user?.displayName?.charAt(0) || user?.email?.charAt(0).toUpperCase() || "JD"}
@@ -96,7 +117,7 @@ function DashboardShell({
               <SidebarMenuButton 
                 onClick={handleLogout}
                 tooltip="Logout" 
-                className="text-destructive hover:text-destructive hover:bg-destructive/10 rounded-xl transition-all"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10 rounded-xl transition-all h-10 px-3.5 gap-3.5 group-data-[collapsible=icon]:!h-8 group-data-[collapsible=icon]:!w-8 group-data-[collapsible=icon]:!p-0 group-data-[collapsible=icon]:justify-center"
               >
                 <LogOut className="h-4 w-4" />
                 <span className="font-bold">Logout System</span>

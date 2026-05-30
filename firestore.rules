@@ -4,48 +4,29 @@ service cloud.firestore {
 
     // --- Helper Functions ---
 
-    /** @description Checks if the user is authenticated. */
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /** @description Checks if the user has an entry in the adminRoles collection. */
     function isAdmin() {
       return isSignedIn() && (
-        get(/databases/$(database)/documents/adminRoles/$(request.auth.uid)).data != null ||
-        request.auth.token.email == "info@designup.ge"
+        request.auth.token.admin == true ||
+        exists(/databases/$(database)/documents/adminRoles/$(request.auth.uid))
       );
     }
 
-    /** @description Checks if the provided UID matches the authenticated user's UID. */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    /** @description Checks ownership and ensures the document exists for updates/deletes. */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
-    }
-
-    /** @description Checks if the user is an admin and the document exists. */
-    function isExistingAdmin() {
-      return isAdmin() && resource != null;
-    }
-
     // --- Collection Rules ---
 
-    /**
-     * @description Role verification for Administrators.
-     */
     match /adminRoles/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       allow create, update, delete: if false;
     }
 
-    /**
-     * @description Role verification for Consultants.
-     */
     match /consultantRoles/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
@@ -53,24 +34,18 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    /**
-     * @description Stores comprehensive profiles. Document ID matches Auth UID.
-     */
     match /consultantProfiles/{consultantId} {
       allow get: if isOwner(consultantId) || isAdmin();
       allow list: if isAdmin();
       allow create: if (isOwner(consultantId) || isAdmin()) && request.resource.data.id == consultantId;
-      allow update: if (isExistingOwner(consultantId) || isExistingAdmin()) && request.resource.data.id == resource.data.id;
+      allow update: if (isOwner(consultantId) || isAdmin()) && request.resource.data.id == resource.data.id;
       allow delete: if isAdmin();
     }
 
-    /**
-     * @description Consulting opportunities for consultants to browse.
-     */
     match /opportunities/{opportunityId} {
       allow get, list: if isSignedIn();
       allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
+      allow update, delete: if isAdmin();
 
       match /applicants/{userId} {
         allow get: if isOwner(userId) || isAdmin();
@@ -80,76 +55,63 @@ service cloud.firestore {
       }
     }
 
-    /**
-     * @description Master data collections (Skills, Languages, Expertises, etc.).
-     */
     match /skills/{docId} {
       allow get, list: if isSignedIn();
-      allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
-    }
-    match /languages/{docId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
-    }
-    match /areasOfExpertise/{docId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
-    }
-    match /areasOfPractice/{docId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
-    }
-    match /sectorsOfExperience/{docId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
-    }
-    match /disciplines/{docId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
-    }
-    match /degrees/{docId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
-    }
-    match /regions/{docId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
-    }
-    match /countries/{docId} {
-      allow get, list: if isSignedIn();
-      allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
+      allow create, update, delete: if isAdmin();
     }
 
-    /**
-     * @description Global system logs for audit and management.
-     */
+    match /languages/{docId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /areasOfExpertise/{docId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /areasOfPractice/{docId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /sectorsOfExperience/{docId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /disciplines/{docId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /degrees/{docId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /regions/{docId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /countries/{docId} {
+      allow get, list: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
     match /systemLogs/{logId} {
       allow get, list: if isAdmin();
       allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
+      allow update, delete: if isAdmin();
     }
 
-    /**
-     * @description Notifications targeted at specific consultants.
-     */
     match /consultantNotifications/{consultantId}/notifications/{notificationId} {
       allow get, list: if isOwner(consultantId) || isAdmin();
       allow create: if isAdmin();
-      allow update, delete: if isExistingAdmin();
+      allow update, delete: if isAdmin();
     }
 
-    /**
-     * @description System-wide settings and dynamic form questions.
-     */
     match /settings/{docId} {
       allow get: if isSignedIn();
       allow list: if isAdmin();
@@ -157,8 +119,13 @@ service cloud.firestore {
     }
 
     match /settings/registration/questions/{questionId} {
-      allow get, list: if isSignedIn();
+      allow get, list: if true;
       allow create, update, delete: if isAdmin();
+    }
+
+    match /{path=**}/applicants/{userId} {
+      allow list: if isSignedIn() && (request.auth.uid == resource.data.uid || isAdmin());
+      allow get: if isOwner(userId) || isAdmin();
     }
   }
 }

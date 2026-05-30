@@ -10,7 +10,7 @@ const GenerateOpportunityInputSchema = z.object({
 
 const GenerateOpportunityOutputSchema = z.object({
   title: z.string(),
-  description: z.string().describe('A professional project brief.'),
+  contentHtml: z.string().describe('A professional project landing page formatted in semantic HTML (h2, p, ul, li).'),
   tags: z.array(z.string()).describe('Up to 5 relevant skill or sector tags.'),
   suggestedDuration: z.string().describe('A realistic duration for this type of project.'),
   suggestedRegion: z.string().describe('Commonly associated region or "Global".'),
@@ -28,7 +28,7 @@ const prompt = ai.definePrompt({
   output: { schema: GenerateOpportunityOutputSchema },
   prompt: `You are an expert recruitment and project manager for the Curatio Foundation, which connects high-level consultants to humanitarian and infrastructure projects.
 
-Based on the Title and optional context, generate a professional project posting.
+Based on the Title and optional context, generate a professional project landing page.
 
 Title: {{{title}}}
 {{#if context}}Additional Context: {{{context}}}{{/if}}
@@ -40,7 +40,8 @@ The Foundation typically works in areas like:
 - Sustainable Finance
 - Disaster Response
 
-Make the description compelling, professional, and clear. Suggest realistic duration and region if not evident.`,
+Make the content compelling, professional, and clear. Format the main project description as rich semantic HTML (using <h2>, <p>, <ul>, <li>) that would fit perfectly into a WYSIWYG editor like TinyMCE. 
+Include sections like "Project Overview", "Responsibilities", and "Required Qualifications". Do not wrap the HTML in markdown blocks. Suggest realistic duration and region if not evident.`,
 });
 
 const generateOpportunityFlow = ai.defineFlow(

@@ -109,7 +109,7 @@ export default function SeedPage() {
           <p className="text-muted-foreground mt-1">Utility for seeding the database with test data for verification.</p>
         </div>
 
-        <Card className="border-none shadow-xl bg-card/60 backdrop-blur-sm ring-1 ring-border">
+        <Card className="border-none shadow-xl bg-card/60 backdrop-blur-xs ring-1 ring-border">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-accent" />

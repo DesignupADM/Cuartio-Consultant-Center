@@ -263,7 +263,7 @@ export default function AdminPanelPage() {
                       <div className="space-y-4">
                         <div className="space-y-2">
                           <Label htmlFor="supportEmail" className="font-bold uppercase text-[10px] tracking-widest">Support Email</Label>
-                          <Input id="supportEmail" name="supportEmail" defaultValue={settings?.supportEmail ?? "support@connectflow.pro"} />
+                          <Input id="supportEmail" name="supportEmail" defaultValue={settings?.supportEmail ?? "support@cif.org"} />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="dbLimit" className="font-bold uppercase text-[10px] tracking-widest">DB Export Limit</Label>

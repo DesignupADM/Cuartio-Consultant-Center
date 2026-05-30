@@ -208,7 +208,7 @@ export default function ProfilePage() {
             <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">My Profile</h1>
             <p className="text-muted-foreground">Keep your professional information up to date.</p>
           </div>
-          <Card className="p-4 bg-primary/5 border-primary/20 min-w-[240px] shadow-sm">
+          <Card className="p-4 bg-primary/5 border-primary/20 min-w-[240px] shadow-xs">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold uppercase tracking-wider">Profile Strength</span>
               <span className="text-sm font-bold text-primary">{completeness}%</span>
@@ -221,7 +221,7 @@ export default function ProfilePage() {
         </div>
 
         <div className="grid gap-8">
-          <Card className="border-none ring-1 ring-border shadow-sm overflow-hidden text-center sm:text-left bg-gradient-to-r from-card to-primary/5">
+          <Card className="border-none ring-1 ring-border shadow-xs overflow-hidden text-center sm:text-left bg-linear-to-r from-card to-primary/5">
             <CardContent className="p-6 flex flex-col sm:flex-row items-center gap-6">
               <div className="relative group">
                 <div className="h-24 w-24 rounded-full bg-muted flex items-center justify-center overflow-hidden border-4 border-background ring-2 ring-primary/20">
@@ -258,7 +258,7 @@ export default function ProfilePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-none ring-1 ring-border shadow-sm overflow-hidden">
+          <Card className="border-none ring-1 ring-border shadow-xs overflow-hidden">
             <CardHeader className="bg-muted/30">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-primary" />
@@ -304,7 +304,7 @@ export default function ProfilePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-none ring-1 ring-border shadow-sm overflow-hidden">
+          <Card className="border-none ring-1 ring-border shadow-xs overflow-hidden">
             <CardHeader className="bg-muted/30">
               <CardTitle className="text-lg flex items-center gap-2">
                 <FileText className="h-4 w-4 text-primary" />
@@ -350,7 +350,7 @@ export default function ProfilePage() {
                        <span>Transferring Data</span>
                        <span>{Math.round(cvProgress)}%</span>
                     </div>
-                    <Progress value={cvProgress} className="h-1.5 bg-primary/10 shadow-sm" />
+                    <Progress value={cvProgress} className="h-1.5 bg-primary/10 shadow-xs" />
                   </div>
                 )}
 
@@ -359,7 +359,7 @@ export default function ProfilePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-none ring-1 ring-border shadow-sm overflow-hidden">
+          <Card className="border-none ring-1 ring-border shadow-xs overflow-hidden">
             <CardHeader className="bg-muted/30">
               <CardTitle className="text-lg flex items-center gap-2">
                  <Sparkles className="h-4 w-4 text-primary" />
@@ -391,7 +391,7 @@ export default function ProfilePage() {
 
           {/* Dynamic Registration Fields */}
           {questions && questions.length > 0 && (
-            <Card className="border-none ring-1 ring-border shadow-sm overflow-hidden border-l-4 border-l-primary/40">
+            <Card className="border-none ring-1 ring-border shadow-xs overflow-hidden border-l-4 border-l-primary/40">
               <CardHeader className="bg-primary/5">
                 <CardTitle className="text-lg flex items-center gap-2">
                   <HelpCircle className="h-4 w-4 text-primary" />

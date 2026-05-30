@@ -58,7 +58,7 @@ export function useCollection<T = DocumentData>(query: Query<T> | null, options?
     );
 
     return () => unsubscribe();
-  }, [query]);
+  }, [query, options?.listen]);
 
   if (!query) {
     return { data: [], loading: false, error: null };

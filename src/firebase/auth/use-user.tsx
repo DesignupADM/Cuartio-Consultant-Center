@@ -44,24 +44,33 @@ async function resolveInitialProfile(db: ReturnType<typeof useFirestore>, fireba
   }
 
   const request = (async () => {
-    const profileRef = doc(db, "consultantProfiles", firebaseUser.uid);
-    const profileSnap = await getDoc(profileRef);
-
-    if (profileSnap.exists()) {
-      const resolvedProfile = buildConsultantProfile(firebaseUser, profileSnap.data());
+    // 1. Check Custom Claims first for admin role (fast-path)
+    const idTokenResult = await firebaseUser.getIdTokenResult();
+    if (idTokenResult.claims.admin === true) {
+      const resolvedProfile = buildAdminProfile(firebaseUser);
       profileCache.set(firebaseUser.uid, resolvedProfile);
       return resolvedProfile;
     }
 
-    const adminRef = doc(db, "adminRoles", firebaseUser.uid);
+    // 2. Fallback to parallel Firestore collection lookups
+    const adminRoleRef = doc(db, "adminRoles", firebaseUser.uid);
+    const profileRef = doc(db, "consultantProfiles", firebaseUser.uid);
     const consultantRoleRef = doc(db, "consultantRoles", firebaseUser.uid);
-    const [adminSnap, consultantRoleSnap] = await Promise.all([
-      getDoc(adminRef),
+
+    const [adminSnap, profileSnap, consultantRoleSnap] = await Promise.all([
+      getDoc(adminRoleRef),
+      getDoc(profileRef),
       getDoc(consultantRoleRef),
     ]);
 
     if (adminSnap.exists()) {
       const resolvedProfile = buildAdminProfile(firebaseUser);
+      profileCache.set(firebaseUser.uid, resolvedProfile);
+      return resolvedProfile;
+    }
+
+    if (profileSnap.exists()) {
+      const resolvedProfile = buildConsultantProfile(firebaseUser, profileSnap.data());
       profileCache.set(firebaseUser.uid, resolvedProfile);
       return resolvedProfile;
     }

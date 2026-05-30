@@ -23,10 +23,19 @@ import {
 import Link from "next/link"
 import { Progress } from "@/components/ui/progress"
 
+import { useAuth, useStorage, useFirestore } from "@/firebase"
+import { createUserWithEmailAndPassword } from "firebase/auth"
+import { uploadFile } from "@/firebase/storage/upload"
+import { createUserProfile } from "@/firebase/firestore/users"
+import { applyToOpportunity } from "@/firebase/firestore/opportunities"
+
 export default function ApplyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
   const { toast } = useToast()
+  const auth = useAuth()
+  const db = useFirestore()
+  const storage = useStorage()
   
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -37,6 +46,7 @@ export default function ApplyPage({ params }: { params: Promise<{ id: string }> 
     lastName: "",
     email: "",
     phone: "",
+    password: "",
     profession: "",
     country: "",
     years: "",
@@ -47,19 +57,66 @@ export default function ApplyPage({ params }: { params: Promise<{ id: string }> 
   const handleNext = () => setStep(prev => prev + 1)
   const handleBack = () => setStep(prev => prev - 1)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
     
-    // Simulate API call for registration and application
-    setTimeout(() => {
-      setIsSubmitting(false)
+    try {
+      // 1. Create the Authentication Account
+      const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password)
+      const uid = userCredential.user.uid
+      
+      // 2. Upload CV File if present
+      let cvUrl = ""
+      if (formData.cv) {
+        const path = `consultants/${uid}/cv.pdf`
+        cvUrl = await uploadFile(storage, formData.cv, path)
+      }
+      
+      // 3. Create the Consultant User Profile
+      const newProfile = {
+        uid,
+        id: uid,
+        email: formData.email,
+        role: "consultant" as const,
+        displayName: `${formData.firstName} ${formData.lastName}`.trim(),
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phone: formData.phone,
+        profession: formData.profession,
+        country: formData.country,
+        years: Number(formData.years) || 0,
+        bio: formData.bio,
+        createdAt: new Date().toISOString(),
+        cvUrl,
+        status: "pending" as const
+      }
+      await createUserProfile(db, newProfile)
+      
+      // 4. Submit the Application for this specific Opportunity
+      await applyToOpportunity(db, id, {
+        uid,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        country: formData.country
+      })
+      
       setIsSuccess(true)
       toast({
         title: "Application Received",
         description: "Your profile has been created and your application is under review."
       })
-    }, 2000)
+    } catch (error: any) {
+      console.error("Submission failed:", error)
+      toast({
+        variant: "destructive",
+        title: "Application Failed",
+        description: error.message || "An error occurred during submission. Please try again."
+      })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   if (isSuccess) {
@@ -130,6 +187,11 @@ export default function ApplyPage({ params }: { params: Promise<{ id: string }> 
                   <div className="space-y-2">
                     <Label htmlFor="phone">Phone Number</Label>
                     <Input id="phone" type="tel" placeholder="+1..." value={formData.phone} onChange={(e) => setFormData({...formData, phone: e.target.value})} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Choose Password</Label>
+                    <Input id="password" type="password" required placeholder="••••••••" value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} minLength={6} />
+                    <p className="text-[10px] text-muted-foreground">Min. 6 characters. You will use this to sign in later.</p>
                   </div>
                 </div>
               )}

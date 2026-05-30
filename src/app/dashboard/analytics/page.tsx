@@ -376,7 +376,7 @@ export default function AnalyticsPage() {
         </div>
 
         {/* Detailed Stats Table Placeholder or more charts */}
-        <Card className="border-none ring-1 ring-border bg-card/60 backdrop-blur-sm shadow-sm overflow-hidden">
+        <Card className="border-none ring-1 ring-border bg-card/60 backdrop-blur-xs shadow-xs overflow-hidden">
           <CardHeader className="border-b border-muted/30 pb-4">
             <div className="flex items-center justify-between">
               <div>
@@ -399,7 +399,7 @@ export default function AnalyticsPage() {
                 </thead>
                 <tbody className="divide-y divide-muted/20">
                   {analytics.mandateMetrics.map((opp: any, i: number) => (
-                    <tr key={opp.id || i} className="hover:bg-primary/[0.02] transition-colors">
+                    <tr key={opp.id || i} className="hover:bg-primary/2 transition-colors">
                       <td className="px-6 py-4 font-bold text-sm">{opp.title}</td>
                       <td className="px-6 py-4 text-sm font-medium">{opp.applications}</td>
                       <td className="px-6 py-4">

@@ -12,9 +12,11 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'ConnectFlow Pro | Consultant Management',
-  description: 'A professional platform for managing consultant profiles and opportunities.',
+  title: 'CIF Consultant Management',
+  description: 'Curatio International Foundation - Consultant Management Portal.',
 };
+
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 export default function RootLayout({
   children,
@@ -30,10 +32,12 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <FirebaseClientProvider>
-            {children}
-            <Toaster />
-          </FirebaseClientProvider>
+          <TooltipProvider>
+            <FirebaseClientProvider>
+              {children}
+              <Toaster />
+            </FirebaseClientProvider>
+          </TooltipProvider>
         </ThemeProvider>
       </body>
     </html>

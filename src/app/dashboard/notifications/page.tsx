@@ -86,7 +86,7 @@ export default function NotificationsPage() {
         </div>
 
         <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-5">
-          <Card className="lg:col-span-2 border-none ring-1 ring-border shadow-xl bg-card/60 backdrop-blur-sm">
+          <Card className="lg:col-span-2 border-none ring-1 ring-border shadow-xl bg-card/60 backdrop-blur-xs">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-lg">
                 <Send className="h-5 w-5 text-primary" />
