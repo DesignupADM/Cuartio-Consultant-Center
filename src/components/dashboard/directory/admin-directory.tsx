@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import Link from "next/link"
 import Image from "next/image"
 import { 
   Table, 
@@ -31,7 +32,8 @@ import {
   MoreHorizontal,
   MessageSquare,
   Loader2,
-  Sparkles
+  Sparkles,
+  ExternalLink
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { 
@@ -373,11 +375,11 @@ export function AdminDirectory() {
                 Advanced Filters
               </Button>
             </SheetTrigger>
-            <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto">
+            <SheetContent className="w-[400px] sm:w-[540px] overflow-y-auto flex flex-col">
               <SheetHeader>
                 <SheetTitle>Advanced Filters</SheetTitle>
               </SheetHeader>
-              <div className="grid gap-6 py-6">
+              <div className="flex-1 grid gap-6 px-6 py-6 overflow-y-auto">
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Language & Communication</h3>
                   <div className="space-y-2">
@@ -637,9 +639,9 @@ export function AdminDirectory() {
       </div>
 
       <Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <SheetContent side="right" className="sm:max-w-2xl overflow-y-auto">
+        <SheetContent side="right" className="sm:max-w-2xl overflow-y-auto flex flex-col">
           {activeConsultant && (
-            <div className="space-y-8 py-4">
+            <div className="flex flex-col flex-1 min-h-0">
               <SheetHeader className="space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -669,140 +671,177 @@ export function AdminDirectory() {
                 </div>
               </SheetHeader>
 
-              <div className="grid grid-cols-2 gap-6 text-sm">
-                <div className="space-y-1">
-                  <p className="text-muted-foreground flex items-center gap-2"><Mail className="h-3.5 w-3.5" /> Email</p>
-                  <p className="font-medium">{activeConsultant.email}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-muted-foreground flex items-center gap-2"><Phone className="h-3.5 w-3.5" /> Phone</p>
-                  <p className="font-medium">{activeConsultant.phone}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-muted-foreground flex items-center gap-2"><Globe className="h-3.5 w-3.5" /> Country</p>
-                  <p className="font-medium">{activeConsultant.country}</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-muted-foreground flex items-center gap-2"><Briefcase className="h-3.5 w-3.5" /> Experience</p>
-                  <p className="font-medium">{activeConsultant.years} Years</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-muted-foreground flex items-center gap-2"><CalendarDays className="h-3.5 w-3.5" /> Last Updated</p>
-                  <p className="font-medium">{activeConsultant.lastUpdate}</p>
-                </div>
-              </div>
-
-              <Separator />
-
-              <div>
-                <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Professional Bio</h4>
-                <p className="text-sm leading-relaxed text-foreground/80 italic border-l-4 border-accent pl-4">
-                  &quot;{activeConsultant.bio}&quot;
-                </p>
-              </div>
-
-              {activeConsultant.customAnswers && Object.keys(activeConsultant.customAnswers).length > 0 && (
-                <>
-                  <Separator />
-                  <div>
-                    <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Project Application Data</h4>
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      {Object.entries(activeConsultant.customAnswers).map(([key, val]) => {
-                        const fieldDef = oppFields?.find((f: any) => f.id === key);
-                        const label = fieldDef ? fieldDef.label : key;
-                        return (
-                          <div key={key} className="space-y-1">
-                            <p className="text-muted-foreground font-semibold text-xs uppercase tracking-wider">{label}</p>
-                            <div className="font-medium bg-muted/20 p-3 border border-border/50 rounded-lg text-foreground/90 whitespace-pre-wrap">
-                              {String(val)}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
+              <div className="flex-1 overflow-y-auto px-6 py-6 space-y-8">
+                <div className="grid grid-cols-2 gap-6 text-sm">
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground flex items-center gap-2"><Mail className="h-3.5 w-3.5" /> Email</p>
+                    <p className="font-medium">{activeConsultant.email}</p>
                   </div>
-                </>
-              )}
-
-              <div className="bg-primary/5 p-6 rounded-2xl border border-primary/10 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-bold flex items-center gap-2 text-primary">
-                    <CircleCheck className="h-5 w-5" /> AI Profile Analysis
-                  </h4>
-                  {isInsightLoading && <span className="text-xs text-muted-foreground animate-pulse">Analyzing CV...</span>}
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground flex items-center gap-2"><Phone className="h-3.5 w-3.5" /> Phone</p>
+                    <p className="font-medium">{activeConsultant.phone}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground flex items-center gap-2"><Globe className="h-3.5 w-3.5" /> Country</p>
+                    <p className="font-medium">{activeConsultant.country}</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground flex items-center gap-2"><Briefcase className="h-3.5 w-3.5" /> Experience</p>
+                    <p className="font-medium">{activeConsultant.years} Years</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-muted-foreground flex items-center gap-2"><CalendarDays className="h-3.5 w-3.5" /> Last Updated</p>
+                    <p className="font-medium">{activeConsultant.lastUpdate}</p>
+                  </div>
                 </div>
 
-                {isInsightLoading ? (
-                  <div className="space-y-3">
-                    <div className="h-3 w-full bg-muted animate-pulse rounded" />
-                    <div className="h-3 w-5/6 bg-muted animate-pulse rounded" />
-                    <div className="h-3 w-4/6 bg-muted animate-pulse rounded" />
-                  </div>
-                ) : activeConsultant.aiInsight ? (
-                  <div className="space-y-6">
+                <Separator />
+
+                <div>
+                  <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Professional Bio</h4>
+                  <p className="text-sm leading-relaxed text-foreground/80 italic border-l-4 border-accent pl-4">
+                    &quot;{activeConsultant.bio}&quot;
+                  </p>
+                </div>
+
+                {activeConsultant.customAnswers && Object.keys(activeConsultant.customAnswers).length > 0 && (
+                  <>
+                    <Separator />
                     <div>
-                      <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">3-Sentence Summary</p>
-                      <p className="text-sm leading-relaxed">{activeConsultant.aiInsight.summary}</p>
+                      <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Project Application Data</h4>
+                      <div className="grid grid-cols-2 gap-4 text-sm">
+                        {Object.entries(activeConsultant.customAnswers).map(([key, val]) => {
+                          const fieldDef = oppFields?.find((f: any) => f.id === key);
+                          const label = fieldDef ? fieldDef.label : key;
+                          return (
+                            <div key={key} className="space-y-1">
+                              <p className="text-muted-foreground font-semibold text-xs uppercase tracking-wider">{label}</p>
+                              <div className="font-medium bg-muted/20 p-3 border border-border/50 rounded-lg text-foreground/90 whitespace-pre-wrap">
+                                {String(val)}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-6">
-                      <div>
-                        <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Top Skills</p>
+                  </>
+                )}
+
+                <div className="bg-primary/5 rounded-2xl border border-primary/10 overflow-hidden">
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-5 py-4 border-b border-primary/10 bg-primary/10">
+                    <h4 className="font-bold flex items-center gap-2 text-primary text-sm">
+                      <CircleCheck className="h-4 w-4 shrink-0" /> AI Profile Analysis
+                    </h4>
+                    {isInsightLoading && <span className="text-xs text-primary/70 animate-pulse font-medium">Analyzing CV...</span>}
+                  </div>
+
+                  {isInsightLoading ? (
+                    <div className="space-y-3 p-5">
+                      <div className="h-3 w-full bg-primary/10 animate-pulse rounded" />
+                      <div className="h-3 w-5/6 bg-primary/10 animate-pulse rounded" />
+                      <div className="h-3 w-4/6 bg-primary/10 animate-pulse rounded" />
+                    </div>
+                  ) : activeConsultant.aiInsight ? (
+                    <div className="divide-y divide-primary/10">
+
+                      {/* Summary */}
+                      <div className="px-5 py-4 space-y-1.5">
+                        <p className="text-[10px] font-black uppercase tracking-[0.1em] text-primary/60">Summary</p>
+                        <p className="text-sm leading-relaxed text-foreground/80">
+                          {activeConsultant.aiInsight.summary}
+                        </p>
+                      </div>
+
+                      {/* Top Skills */}
+                      <div className="px-5 py-4 space-y-2.5">
+                        <p className="text-[10px] font-black uppercase tracking-[0.1em] text-primary/60">
+                          Top Skills
+                          <span className="ml-2 text-muted-foreground/50 normal-case font-medium tracking-normal">
+                            ({activeConsultant.aiInsight.skills.length})
+                          </span>
+                        </p>
                         <div className="flex flex-wrap gap-1.5">
                           {activeConsultant.aiInsight.skills.map((s: string, i: number) => (
-                            <Badge key={i} variant="outline" className="text-[10px] bg-background">{s}</Badge>
+                            <Badge
+                              key={i}
+                              variant="outline"
+                              className="text-[10px] bg-background/80 border-primary/20 text-foreground/80 hover:bg-primary/5 transition-colors px-2 py-0.5 h-auto"
+                            >
+                              {s}
+                            </Badge>
                           ))}
                         </div>
                       </div>
-                      <div>
-                        <p className="text-xs font-semibold uppercase text-muted-foreground mb-2">Qualifications</p>
-                        <ul className="text-[13px] list-disc list-inside space-y-1">
+
+                      {/* Qualifications */}
+                      <div className="px-5 py-4 space-y-2.5">
+                        <p className="text-[10px] font-black uppercase tracking-[0.1em] text-primary/60">Qualifications</p>
+                        <ul className="space-y-2">
                           {activeConsultant.aiInsight.qualifications.map((q: string, i: number) => (
-                            <li key={i}>{q}</li>
+                            <li key={i} className="flex items-start gap-2.5 text-sm text-foreground/80 leading-relaxed">
+                              <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary/40 shrink-0" />
+                              {q}
+                            </li>
                           ))}
                         </ul>
                       </div>
+
                     </div>
-                  </div>
-                ) : (
-                  <EmptyState 
-                    icon={Sparkles}
-                    title="No Insights Yet"
-                    description="No AI analysis has been generated for this CV yet."
-                    action={
-                      <Button 
-                        onClick={handleGenerateInsight} 
-                        disabled={!activeConsultant.cvUrl || isInsightLoading}
-                        className="bg-primary hover:bg-primary/95 text-white"
-                        size="sm"
-                      >
-                        <Sparkles className="h-4 w-4 mr-2" /> Generate AI Profile Analysis
-                      </Button>
-                    }
-                  />
-                )}
+                  ) : (
+                    <div className="p-5">
+                      <EmptyState 
+                        icon={Sparkles}
+                        title="No Insights Yet"
+                        description="No AI analysis has been generated for this CV yet."
+                        action={
+                          <Button 
+                            onClick={handleGenerateInsight} 
+                            disabled={!activeConsultant.cvUrl || isInsightLoading}
+                            className="bg-primary hover:bg-primary/95 text-white"
+                            size="sm"
+                          >
+                            <Sparkles className="h-4 w-4 mr-2" /> Generate AI Profile Analysis
+                          </Button>
+                        }
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <SheetFooter className="pt-6 flex flex-col gap-3">
+              <SheetFooter className="flex flex-col gap-2.5">
                 <Button 
-                  onClick={() => handleOpenCV(activeConsultant)} 
-                  className="w-full" 
-                  variant="outline"
-                  disabled={!activeConsultant.cvUrl}
+                  asChild
+                  className="w-full bg-primary hover:bg-primary/90"
                 >
-                  <FileText className="mr-2 h-4 w-4" />
-                  {activeConsultant.cvUrl ? "Open Original CV PDF" : "No CV Uploaded"}
+                  <Link href={`/dashboard/directory/${activeConsultant.id}`}>
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    View Full Profile
+                  </Link>
                 </Button>
-                <Button 
-                  className="w-full bg-primary"
-                  onClick={() => {
-                    if (activeConsultant) {
-                      window.location.href = `mailto:${activeConsultant.email}`;
-                    }
-                  }}
-                >
-                  <Mail className="mr-2 h-4 w-4" /> Contact Consultant
-                </Button>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <Button 
+                    onClick={() => handleOpenCV(activeConsultant)} 
+                    className="w-full" 
+                    variant="outline"
+                    disabled={!activeConsultant.cvUrl}
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    {activeConsultant.cvUrl ? "Open CV PDF" : "No CV"}
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => {
+                      if (activeConsultant) {
+                        window.location.href = `mailto:${activeConsultant.email}`;
+                      }
+                    }}
+                  >
+                    <Mail className="mr-2 h-4 w-4" /> Contact
+                  </Button>
+                </div>
               </SheetFooter>
             </div>
           )}

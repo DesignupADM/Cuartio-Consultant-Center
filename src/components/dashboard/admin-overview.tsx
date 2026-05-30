@@ -200,7 +200,7 @@ export function AdminOverview() {
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="flex flex-col gap-8 animate-in fade-in duration-700">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Foundation Overview</h1>
@@ -218,7 +218,7 @@ export function AdminOverview() {
         </div>
       </div>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-0">
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
         <Card className="border-none ring-1 ring-border bg-primary text-primary-foreground shadow-xl shadow-primary/10 overflow-hidden relative group">
           <div className="absolute top-0 right-0 p-6 opacity-10 transform translate-x-4 -translate-y-4 group-hover:translate-x-0 group-hover:translate-y-0 transition-transform duration-700">
             <Sparkles className="h-32 w-32" />

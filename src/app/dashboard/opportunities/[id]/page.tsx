@@ -606,10 +606,10 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
                             )
                           })()}
                         </div>
-                        <div className="grid grid-cols-3 gap-2.5 pt-2">
+                        <div className="flex flex-wrap gap-2 pt-2">
                           <Button
                             size="sm"
-                            className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[10px] uppercase tracking-wider py-2.5 rounded-xl border-none transition-all shadow-sm"
+                            className="flex-1 min-w-[110px] bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[10px] uppercase tracking-wider py-2.5 rounded-xl border-none transition-all shadow-sm"
                             onClick={() => selectedConsultantId && updateApplicantStatus(selectedConsultantId, 'accepted')}
                           >
                             <UserCheck className="h-3.5 w-3.5 mr-1.5" /> Shortlist
@@ -617,7 +617,7 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
                           <Button
                             size="sm"
                             variant="outline"
-                            className="text-rose-600 hover:bg-rose-50 hover:text-rose-700 border-rose-200 font-bold text-[10px] uppercase tracking-wider py-2.5 rounded-xl transition-all"
+                            className="flex-1 min-w-[110px] text-rose-600 hover:bg-rose-50 hover:text-rose-700 border-rose-200 font-bold text-[10px] uppercase tracking-wider py-2.5 rounded-xl transition-all"
                             onClick={() => selectedConsultantId && updateApplicantStatus(selectedConsultantId, 'declined')}
                           >
                             <UserX className="h-3.5 w-3.5 mr-1.5" /> Decline
@@ -625,7 +625,7 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
                           <Button
                             size="sm"
                             variant="outline"
-                            className="text-muted-foreground hover:bg-muted font-bold text-[10px] uppercase tracking-wider py-2.5 rounded-xl transition-all"
+                            className="flex-1 min-w-[110px] text-muted-foreground hover:bg-muted font-bold text-[10px] uppercase tracking-wider py-2.5 rounded-xl transition-all"
                             onClick={() => selectedConsultantId && updateApplicantStatus(selectedConsultantId, 'applied')}
                           >
                             <Clock className="h-3.5 w-3.5 mr-1.5" /> Under Review

@@ -123,6 +123,11 @@ service cloud.firestore {
       allow create, update, delete: if isAdmin();
     }
 
+    match /opportunityFields/{fieldId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
     match /{path=**}/applicants/{userId} {
       allow list: if isSignedIn() && (request.auth.uid == resource.data.uid || isAdmin());
       allow get: if isOwner(userId) || isAdmin();
