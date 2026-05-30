@@ -51,6 +51,10 @@ export default function AdminPanelPage() {
   const [isQuestionDialogOpen, setIsQuestionDialogOpen] = useState(false)
   const [editingQuestion, setEditingQuestion] = useState<any>(null)
 
+  const [newOppFieldType, setNewOppFieldType] = useState<"text" | "textarea" | "select">("text")
+  const [isOppFieldDialogOpen, setIsOppFieldDialogOpen] = useState(false)
+  const [editingOppField, setEditingOppField] = useState<any>(null)
+
   // Fetch admin users
   const adminsQuery = useMemo(() => query(collection(db, "adminRoles")), [db])
   const { data: admins, loading: adminsLoading } = useCollection(adminsQuery as any)
@@ -62,6 +66,10 @@ export default function AdminPanelPage() {
   // Fetch dynamic questions
   const questionsQuery = useMemo(() => query(collection(db, "settings", "registration", "questions"), orderBy("order", "asc")), [db])
   const { data: questions, loading: questionsLoading } = useCollection(questionsQuery as any)
+
+  // Fetch opportunity custom fields
+  const oppFieldsQuery = useMemo(() => query(collection(db, "opportunityFields")), [db])
+  const { data: oppFields, loading: oppFieldsLoading } = useCollection(oppFieldsQuery as any)
 
   const handleToggleSetting = (key: string, value: boolean) => {
     updateDoc(settingsRef, { [key]: value })
@@ -211,6 +219,75 @@ export default function AdminPanelPage() {
     }
   }
 
+  const handleAddOppField = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsSaving(true)
+    const formData = new FormData(e.currentTarget)
+    const label = formData.get("label") as string
+    const optionsRaw = formData.get("options") as string
+    
+    const existing = oppFields.find(f => f.label.toLowerCase() === label.toLowerCase())
+    if (existing) {
+      toast({ variant: "destructive", title: "Field Already Exists", description: "A project field with this label already exists." })
+      setIsSaving(false)
+      return
+    }
+
+    try {
+      await addDoc(collection(db, "opportunityFields"), {
+        label,
+        type: newOppFieldType,
+        required: formData.get("required") === "on",
+        options: newOppFieldType === "select" ? optionsRaw.split(",").map(o => o.trim()).filter(o => !!o) : [],
+        createdAt: new Date().toISOString()
+      })
+      toast({ title: "Field Added" })
+      ;(e.target as HTMLFormElement).reset()
+    } catch (err) {
+      toast({ variant: "destructive", title: "Error Adding Field" })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleDeleteOppField = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "opportunityFields", id))
+      toast({ title: "Field Removed" })
+    } catch {
+      toast({ variant: "destructive", title: "Error" })
+    }
+  }
+
+  const openEditOppField = (f: any) => {
+    setEditingOppField(f)
+    setIsOppFieldDialogOpen(true)
+  }
+
+  const handleSaveOppField = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsSaving(true)
+    try {
+      const formData = new FormData(e.currentTarget)
+      const label = formData.get("label") as string
+      const optionsRaw = formData.get("options") as string
+      const type = formData.get("type") as string
+      
+      await updateDoc(doc(db, "opportunityFields", editingOppField.id), {
+        label,
+        type,
+        required: formData.get("required") === "on",
+        options: type === "select" ? optionsRaw.split(",").map(o => o.trim()).filter(o => !!o) : []
+      })
+      toast({ title: "Field Updated" })
+      setIsOppFieldDialogOpen(false)
+    } catch {
+      toast({ variant: "destructive", title: "Update Failed" })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   return (
     <DashboardLayout role="admin">
       <div className="space-y-6">
@@ -220,9 +297,10 @@ export default function AdminPanelPage() {
         </div>
 
         <Tabs defaultValue="general" className="w-full">
-          <TabsList className="grid w-full grid-cols-3 mb-8">
+          <TabsList className="grid w-full grid-cols-4 mb-8">
             <TabsTrigger value="general">System Settings</TabsTrigger>
             <TabsTrigger value="form">Registration Builder</TabsTrigger>
+            <TabsTrigger value="opps">Project Fields</TabsTrigger>
             <TabsTrigger value="users">Admin Accounts</TabsTrigger>
           </TabsList>
 
@@ -403,6 +481,97 @@ export default function AdminPanelPage() {
             </div>
           </TabsContent>
 
+          <TabsContent value="opps" className="space-y-6">
+            <div className="grid gap-6 lg:grid-cols-3">
+              <Card className="lg:col-span-1 h-fit">
+                <CardHeader>
+                  <CardTitle className="text-lg">Add Project Field</CardTitle>
+                  <CardDescription>Create a reusable custom field for project applications.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleAddOppField} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Field Label</Label>
+                      <Input name="label" placeholder="e.g. Preferred Salary" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Field Type</Label>
+                      <Select value={newOppFieldType} onValueChange={(v: any) => setNewOppFieldType(v)}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="text">Short Text</SelectItem>
+                          <SelectItem value="textarea">Long Answer</SelectItem>
+                          <SelectItem value="select">Dropdown Menu</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {newOppFieldType === "select" && (
+                      <div className="space-y-2">
+                        <Label>Options (comma separated)</Label>
+                        <Input name="options" placeholder="Option A, Option B" required />
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 py-2">
+                      <Switch name="required" id="opp-req" />
+                      <Label htmlFor="opp-req">Default Required</Label>
+                    </div>
+                    <Button type="submit" disabled={isSaving} className="w-full bg-primary">
+                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Plus className="h-4 w-4 mr-2" />} Add Field
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Database className="h-5 w-5 text-primary" />
+                    Global Project Fields
+                  </CardTitle>
+                  <CardDescription>These fields are available in the Form Builder when creating opportunities.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {oppFieldsLoading ? (
+                      <div className="flex justify-center p-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
+                    ) : oppFields.length === 0 ? (
+                      <div className="text-center py-12 bg-muted/20 rounded-xl border-2 border-dashed">
+                        <p className="text-muted-foreground">No global fields defined.</p>
+                      </div>
+                    ) : (
+                      oppFields.map((f) => (
+                        <div key={f.id} className="flex items-center justify-between p-4 rounded-xl border bg-card group">
+                          <div className="flex items-center gap-4">
+                            <div className="h-10 w-10 rounded-lg bg-primary/5 flex items-center justify-center text-primary">
+                              {f.type === 'text' && <Type className="h-5 w-5" />}
+                              {f.type === 'textarea' && <AlignLeft className="h-5 w-5" />}
+                              {f.type === 'select' && <ChevronDownSquare className="h-5 w-5" />}
+                            </div>
+                            <div>
+                              <p className="font-bold text-sm flex items-center gap-2">
+                                {f.label}
+                                {f.required && <Badge variant="secondary" className="text-[9px] h-4 bg-rose-50 text-rose-600 border-rose-100">Required</Badge>}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground uppercase tracking-widest">{f.type} field</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => openEditOppField(f)}>
+                              <SquarePen className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" className="text-destructive opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleDeleteOppField(f.id)}>
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
           <TabsContent value="users" className="space-y-6">
              <Card>
               <CardHeader className="flex flex-row items-center justify-between">
@@ -533,6 +702,47 @@ export default function AdminPanelPage() {
                   <Button type="submit" disabled={isSaving}>
                     {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Update Registration Form
+                  </Button>
+                </DialogFooter>
+              </form>
+            )}
+          </DialogContent>
+        </Dialog>
+        <Dialog open={isOppFieldDialogOpen} onOpenChange={setIsOppFieldDialogOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Edit Project Field</DialogTitle>
+            </DialogHeader>
+            {editingOppField && (
+              <form onSubmit={handleSaveOppField} className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label>Field Label</Label>
+                  <Input name="label" required defaultValue={editingOppField.label} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Field Type</Label>
+                  <Select name="type" defaultValue={editingOppField.type}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="text">Short Text</SelectItem>
+                      <SelectItem value="textarea">Long Answer</SelectItem>
+                      <SelectItem value="select">Dropdown Menu</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Options (comma separated, if select)</Label>
+                  <Input name="options" defaultValue={(editingOppField.options || []).join(", ")} />
+                </div>
+                <div className="flex items-center gap-2 py-2">
+                  <Switch name="required" id="edit-opp-req" defaultChecked={editingOppField.required} />
+                  <Label htmlFor="edit-opp-req">Default Required</Label>
+                </div>
+                <DialogFooter className="pt-4">
+                  <Button type="button" variant="ghost" onClick={() => setIsOppFieldDialogOpen(false)}>Cancel</Button>
+                  <Button type="submit" disabled={isSaving}>
+                    {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Save Changes
                   </Button>
                 </DialogFooter>
               </form>

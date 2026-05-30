@@ -57,12 +57,13 @@ import {
   DropdownMenuItem
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
-import { useFirestore, usePaginatedCollection } from "@/firebase"
+import { useFirestore, usePaginatedCollection, useCollection } from "@/firebase"
 import { collection, query, where, doc, updateDoc, writeBatch, getDocs } from "firebase/firestore"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { motion, AnimatePresence } from "framer-motion"
+import { EmptyState } from "@/components/ui/empty-state"
 
 export type Consultant = {
   id: string;
@@ -81,6 +82,7 @@ export type Consultant = {
   cvUrl?: string;
   avatarUrl?: string;
   aiInsight?: AdminCvInsightExtractionOutput;
+  customAnswers?: Record<string, any>;
 }
 
 export function AdminDirectory() {
@@ -100,6 +102,9 @@ export function AdminDirectory() {
     return q;
   }, [db, filters])
   const { data: consultants, loading, loadingMore, hasMore, loadMore } = usePaginatedCollection<Consultant>(consultantsQuery as any, 20)
+
+  const oppFieldsQuery = useMemo(() => query(collection(db, "opportunityFields")), [db]);
+  const { data: oppFields } = useCollection(oppFieldsQuery as any);
 
   const [searchQuery, setSearchQuery] = useState("")
   const [isInsightLoading, setIsInsightLoading] = useState(false)
@@ -500,8 +505,9 @@ export function AdminDirectory() {
       </div>
 
       <div className="rounded-2xl border border-border/60 bg-card/40 shadow-xl overflow-hidden backdrop-blur-md">
-        <Table>
-          <TableHeader className="bg-muted/30">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader className="bg-muted/30">
             <TableRow className="hover:bg-transparent border-b border-border/50">
               <TableHead className="w-[50px] pl-6">
                 <Checkbox 
@@ -612,7 +618,8 @@ export function AdminDirectory() {
             ))}
           </AnimatePresence>
           </TableBody>
-        </Table>
+          </Table>
+        </div>
         
         {hasMore && (
             <div className="p-4 border-t flex justify-center bg-muted/10">
@@ -694,6 +701,29 @@ export function AdminDirectory() {
                 </p>
               </div>
 
+              {activeConsultant.customAnswers && Object.keys(activeConsultant.customAnswers).length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-3">Project Application Data</h4>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      {Object.entries(activeConsultant.customAnswers).map(([key, val]) => {
+                        const fieldDef = oppFields?.find((f: any) => f.id === key);
+                        const label = fieldDef ? fieldDef.label : key;
+                        return (
+                          <div key={key} className="space-y-1">
+                            <p className="text-muted-foreground font-semibold text-xs uppercase tracking-wider">{label}</p>
+                            <div className="font-medium bg-muted/20 p-3 border border-border/50 rounded-lg text-foreground/90 whitespace-pre-wrap">
+                              {String(val)}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
+
               <div className="bg-primary/5 p-6 rounded-2xl border border-primary/10 space-y-4">
                 <div className="flex items-center justify-between">
                   <h4 className="font-bold flex items-center gap-2 text-primary">
@@ -735,17 +765,21 @@ export function AdminDirectory() {
                     </div>
                   </div>
                 ) : (
-                  <div className="text-center py-4 space-y-3">
-                    <p className="text-sm text-muted-foreground">No AI analysis has been generated for this CV yet.</p>
-                    <Button 
-                      onClick={handleGenerateInsight} 
-                      disabled={!activeConsultant.cvUrl || isInsightLoading}
-                      className="bg-primary hover:bg-primary/95 text-white"
-                      size="sm"
-                    >
-                      <Sparkles className="h-4 w-4 mr-2" /> Generate AI Profile Analysis
-                    </Button>
-                  </div>
+                  <EmptyState 
+                    icon={Sparkles}
+                    title="No Insights Yet"
+                    description="No AI analysis has been generated for this CV yet."
+                    action={
+                      <Button 
+                        onClick={handleGenerateInsight} 
+                        disabled={!activeConsultant.cvUrl || isInsightLoading}
+                        className="bg-primary hover:bg-primary/95 text-white"
+                        size="sm"
+                      >
+                        <Sparkles className="h-4 w-4 mr-2" /> Generate AI Profile Analysis
+                      </Button>
+                    }
+                  />
                 )}
               </div>
 

@@ -149,12 +149,20 @@ Data is stored in Cloud Firestore under structured paths matching the guidelines
 
 /consultantProfiles/{userId}   --> UserProfile
    ├─ firstName, lastName, email, country, profession, sector, years, bio, status
-   └─ aiInsight: { summary, skills, experienceHighlights, qualifications }
+   ├─ aiInsight: { summary, skills, experienceHighlights, qualifications }
+   └─ customAnswers: { [fieldId]: value } // Aggregated from opportunity applications
 
 /opportunities/{opportunityId} --> Opportunity
    ├─ title, location, region, duration, deadline, description, tags, status
+   ├─ formSchema: [ { id, label, type, required, options, isSystem } ] // Dynamic form fields
    └─ /applicants/{userId}     --> ApplicantData (Subcollection)
-         └─ uid, name, email, location, status ('applied' | 'accepted' | 'declined'), appliedDate
+         └─ uid, name, email, location, status, appliedDate, cvUrl, answers: { [fieldId]: value }
+
+/opportunityFields/{fieldId}   --> Global Form Field Registry
+   └─ label, type, required, options, createdAt
+
+/settings/registration         --> Global Registration Config
+   └─ /questions/{questionId}: { label, type, required, options, order }
 ```
 
 ### Access Authorization Logic (`firestore.rules`)
@@ -186,3 +194,27 @@ Firestore enforces granular restrictions before operations reach database docume
 To seamlessly connect consultants with active projects, the platform features integrated public link distribution:
 *   **Automatic URL Generation**: Upon publishing a new opportunity via the admin dashboard, the system generates a unique public URL (`/public/opportunities/[id]`) and surfaces it in a success dialog for immediate sharing.
 *   **Quick Share Actions**: Every project card on the admin dashboard includes a one-click "Link" button. This utilizes the browser's `navigator.clipboard` API to copy the public URL, streamlining the external distribution of projects to consultants and other interested parties.
+
+---
+
+## 7. Dynamic Forms Architecture
+
+The platform supports robust dynamic form generation and custom data collection both for general consultant registration and specific project applications.
+
+### Global Opportunity Fields Registry
+*   **Purpose**: Prevents duplication of data columns across the database by allowing admins to define reusable custom fields (e.g., "Preferred Salary", "Portfolio URL") for project applications.
+*   **Admin Management**: Located in the Admin Panel (`/dashboard/admin`), the "Project Fields" tab provides full CRUD control over the `/opportunityFields` Firestore collection.
+
+### Dynamic Form Builder
+*   **File Path**: [FormBuilder.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/components/editor/FormBuilder.tsx)
+*   **Integration**: Used in `/dashboard/opportunities/new` and `edit` routes.
+*   **Behavior**: 
+    1.  **System Locked Fields**: Fields like Name, Email, and CV are locked (`isSystem: true`) and cannot be removed to ensure core data integrity.
+    2.  **Custom Field Selection**: Admins can pick fields from the Global Opportunity Fields Registry or create completely new ones (which automatically sync to the global registry).
+    3.  **Schema Storage**: The customized schema is saved as an array of `FormField` objects directly on the `Opportunity` document.
+
+### Consultant Data Aggregation
+*   **Application Submission**: The public-facing `/public/opportunities/[id]` page dynamically renders the form based on the opportunity's schema.
+*   **Data Flow**: When a consultant applies, their custom field answers and uploaded CV URL are saved to the local `ApplicantData` subcollection.
+*   **Profile Synchronization**: To ensure custom answers are searchable and visible globally, the `applyToOpportunity` function in [opportunities.ts](file:///Users/elene/Documents/Curatio%20Consultatnt/src/firebase/firestore/opportunities.ts) executes a Firestore batch write to merge the new answers into the consultant's main `/consultantProfiles/{uid}` document under a `customAnswers` object.
+*   **Directory Visibility**: The central `AdminDirectory` component seamlessly parses these `customAnswers`, cross-referencing keys against the global registry to display a rich, dynamically generated "Project Application Data" view in the consultant's side-panel profile.

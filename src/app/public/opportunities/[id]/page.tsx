@@ -5,6 +5,7 @@ import { use, useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
   MapPin, 
   Calendar, 
@@ -26,17 +27,21 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
-import { useFirestore } from "@/firebase"
+import { useFirestore, useStorage } from "@/firebase"
 import { doc, getDoc } from "firebase/firestore"
-import { type Opportunity } from "@/firebase/firestore/opportunities"
+import { type Opportunity, applyToOpportunity } from "@/firebase/firestore/opportunities"
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
 
 export default function PublicOpportunityPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const { toast } = useToast()
   const db = useFirestore()
+  const storage = useStorage()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [opportunity, setOpportunity] = useState<Opportunity | null>(null)
   const [loading, setLoading] = useState(true)
+  const [formData, setFormData] = useState<Record<string, any>>({})
+  const [cvFile, setCvFile] = useState<File | null>(null)
 
   useEffect(() => {
     const fetchOpp = async () => {
@@ -61,17 +66,63 @@ export default function PublicOpportunityPage({ params }: { params: Promise<{ id
     description: "Global connectivity"
   }).imageUrl
 
-  const handleApply = (e: React.FormEvent) => {
+  const handleApply = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsSubmitting(true)
-    setTimeout(() => {
-      setIsSubmitting(false)
+    
+    try {
+      let cvUrl = "";
+      if (cvFile) {
+        const fileRef = ref(storage, `applications/cvs/${Date.now()}_${cvFile.name}`);
+        const snapshot = await uploadBytes(fileRef, cvFile);
+        cvUrl = await getDownloadURL(snapshot.ref);
+      }
+
+      // We assume the user is authenticated in a real scenario, but for this demo, 
+      // we'll just mock a UID or use an anonymous one. Since the prompt implies 
+      // the applicant is applying, we generate a mock UID if not logged in.
+      // Wait, applyToOpportunity expects userData to have uid, firstName, lastName, email, country.
+      const userData = {
+        uid: `user_${Date.now()}`,
+        firstName: formData.first_name || "Unknown",
+        lastName: formData.last_name || "User",
+        email: formData.email || "no-email@example.com",
+        country: "Unknown"
+      };
+
+      await applyToOpportunity(db, id, userData, {
+        cvUrl,
+        answers: formData
+      });
+
       toast({
         title: "Application Received",
         description: "Your profile has been created and your application is being reviewed.",
-      })
-    }, 1500)
+      });
+
+      // Clear form
+      setFormData({});
+      setCvFile(null);
+    } catch (err: any) {
+      console.error(err);
+      toast({
+        variant: "destructive",
+        title: "Application Failed",
+        description: err.message || "Something went wrong.",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   }
+
+  const schema = opportunity?.formSchema && opportunity.formSchema.length > 0 
+    ? opportunity.formSchema 
+    : [
+        { id: "first_name", label: "First Name", type: "text", required: true, isSystem: true },
+        { id: "last_name", label: "Last Name", type: "text", required: true, isSystem: true },
+        { id: "email", label: "Email Address", type: "text", required: true, isSystem: true },
+        { id: "cv", label: "CV / Resume", type: "file", required: true, isSystem: true },
+      ];
 
   if (loading) {
     return (
@@ -193,29 +244,67 @@ export default function PublicOpportunityPage({ params }: { params: Promise<{ id
                   <CardDescription>Not in our system? Provide your details below to apply and join our expert network.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="firstName">First Name</Label>
-                      <Input id="firstName" placeholder="John" required />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="lastName">Last Name</Label>
-                      <Input id="lastName" placeholder="Doe" required />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email Address</Label>
-                    <Input id="email" type="email" placeholder="john.doe@example.com" required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="bio">Professional Summary</Label>
-                    <Textarea id="bio" placeholder="Briefly describe your expertise..." rows={4} required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="cv">Upload CV (PDF)</Label>
-                    <Input id="cv" type="file" accept=".pdf" required />
-                    <p className="text-[10px] text-muted-foreground">Maximum file size: 5MB</p>
-                  </div>
+                  {schema.map(field => {
+                    if (field.type === 'file') {
+                      return (
+                        <div key={field.id} className="space-y-2">
+                          <Label htmlFor={field.id}>{field.label} {field.required && <span className="text-destructive">*</span>}</Label>
+                          <Input 
+                            id={field.id} 
+                            type="file" 
+                            accept=".pdf,.doc,.docx" 
+                            required={field.required}
+                            onChange={(e) => setCvFile(e.target.files?.[0] || null)}
+                          />
+                        </div>
+                      )
+                    }
+
+                    if (field.type === 'select') {
+                      return (
+                        <div key={field.id} className="space-y-2">
+                          <Label htmlFor={field.id}>{field.label} {field.required && <span className="text-destructive">*</span>}</Label>
+                          <Select 
+                            required={field.required}
+                            onValueChange={(val) => setFormData({...formData, [field.id]: val})}
+                            value={formData[field.id] || ''}
+                          >
+                            <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
+                            <SelectContent>
+                              {(field as any).options?.map((opt: string) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )
+                    }
+
+                    if (field.type === 'textarea') {
+                      return (
+                        <div key={field.id} className="space-y-2">
+                          <Label htmlFor={field.id}>{field.label} {field.required && <span className="text-destructive">*</span>}</Label>
+                          <Textarea 
+                            id={field.id} 
+                            required={field.required}
+                            value={formData[field.id] || ''}
+                            onChange={(e) => setFormData({...formData, [field.id]: e.target.value})}
+                          />
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <div key={field.id} className="space-y-2">
+                        <Label htmlFor={field.id}>{field.label} {field.required && <span className="text-destructive">*</span>}</Label>
+                        <Input 
+                          id={field.id} 
+                          type="text" 
+                          required={field.required}
+                          value={formData[field.id] || ''}
+                          onChange={(e) => setFormData({...formData, [field.id]: e.target.value})}
+                        />
+                      </div>
+                    )
+                  })}
                 </CardContent>
                 <CardFooter>
                   <Button type="submit" className="w-full bg-primary" disabled={isSubmitting}>

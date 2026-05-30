@@ -29,6 +29,8 @@ import { generateOpportunity } from "@/ai/flows/generate-opportunity-flow"
 import { errorEmitter } from "@/firebase/error-emitter"
 import { FirestorePermissionError } from "@/firebase/errors"
 import { OpportunityEditor } from "@/components/editor/OpportunityEditor"
+import { FormBuilder } from "@/components/editor/FormBuilder"
+import { FormField } from "@/firebase/firestore/opportunities"
 import { ImageUploader } from "@/components/ui/image-uploader"
 import { doc, getDoc } from "firebase/firestore"
 import Link from "next/link"
@@ -62,7 +64,8 @@ export default function EditOpportunityPage({ params }: { params: Promise<{ id: 
     content: "",
     featuredImage: "",
     tags: "",
-    requirements: ""
+    requirements: "",
+    formSchema: [] as FormField[]
   })
 
   useEffect(() => {
@@ -84,6 +87,7 @@ export default function EditOpportunityPage({ params }: { params: Promise<{ id: 
             featuredImage: data.featuredImage || "",
             tags: Array.isArray(data.tags) ? data.tags.join(", ") : (data.tags || ""),
             requirements: Array.isArray(data.requirements) ? data.requirements.join("\n") : (data.requirements || ""),
+            formSchema: data.formSchema || [],
           })
         } else {
           toast({ variant: "destructive", title: "Project not found" })
@@ -138,6 +142,7 @@ export default function EditOpportunityPage({ params }: { params: Promise<{ id: 
       featuredImage: formValues.featuredImage,
       tags: formValues.tags.split(",").map((t: string) => t.trim()).filter(Boolean),
       requirements: formValues.requirements.split("\n").map((r: string) => r.trim()).filter(Boolean),
+      formSchema: formValues.formSchema
     }
 
     try {
@@ -329,6 +334,19 @@ export default function EditOpportunityPage({ params }: { params: Promise<{ id: 
                     onChange={e => setFormValues({...formValues, tags: e.target.value})}
                   />
                 </div>
+              </div>
+            </section>
+
+            <section className="space-y-6">
+              <h3 className="text-xs font-black uppercase tracking-[0.2em] text-muted-foreground/60 flex items-center gap-2">
+                <div className="h-1 w-4 bg-primary rounded-full" /> Application Form
+              </h3>
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground mb-4">Define the questions applicants must answer. System fields (Name, Email, CV) are always included.</p>
+                <FormBuilder 
+                  fields={formValues.formSchema}
+                  onChange={(fields) => setFormValues({...formValues, formSchema: fields})}
+                />
               </div>
             </section>
           </div>

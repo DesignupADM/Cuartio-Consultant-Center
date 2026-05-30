@@ -63,6 +63,7 @@ export async function applyToOpportunity(
   applicationDetails?: { cvUrl?: string; answers?: Record<string, any> }
 ): Promise<void> {
   const applicantRef = doc(db, "opportunities", opportunityId, "applicants", userData.uid);
+  const profileRef = doc(db, "consultantProfiles", userData.uid);
 
   await runTransaction(db, async (transaction) => {
     const existingDoc = await transaction.get(applicantRef);
@@ -82,6 +83,21 @@ export async function applyToOpportunity(
     };
 
     transaction.set(applicantRef, applicantData);
+    
+    // Also merge answers into profile
+    const profileUpdates: any = {};
+    if (applicationDetails?.cvUrl) {
+      profileUpdates.cvUrl = applicationDetails.cvUrl;
+    }
+    if (applicationDetails?.answers && Object.keys(applicationDetails.answers).length > 0) {
+      for (const [key, val] of Object.entries(applicationDetails.answers)) {
+        profileUpdates[`customAnswers.${key}`] = val;
+      }
+    }
+    
+    if (Object.keys(profileUpdates).length > 0) {
+      transaction.set(profileRef, profileUpdates, { merge: true });
+    }
   });
 }
 
