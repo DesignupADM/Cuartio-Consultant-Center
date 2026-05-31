@@ -65,7 +65,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useFirestore, usePaginatedCollection, useCollection } from "@/firebase"
-import { collection, query, where, doc, updateDoc, writeBatch, getDocs, serverTimestamp } from "firebase/firestore"
+import { collection, query, where, doc, updateDoc, writeBatch, getDocs, serverTimestamp, limit, startAfter } from "firebase/firestore"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -114,6 +114,58 @@ export function AdminDirectory() {
   }, [db, filters, refreshTrigger])
   const { data: consultants, loading, loadingMore, hasMore, loadMore } = usePaginatedCollection<Consultant>(consultantsQuery as any, 20)
 
+  const [isMigrating, setIsMigrating] = useState(false)
+  
+  const handleMigrateCountries = async () => {
+    if (!confirm("Run legacy country migration? This will update all profiles with legacy country names to standardized ISO names.")) return;
+    
+    setIsMigrating(true)
+    try {
+      const querySnapshot = await getDocs(collection(db, "consultantProfiles"))
+      let migratedCount = 0;
+      let batch = writeBatch(db);
+      
+      for (const docSnap of querySnapshot.docs) {
+        const data = docSnap.data()
+        const currentCountry = data.country
+        if (currentCountry) {
+          const lowerCountry = currentCountry.toLowerCase().trim()
+          const mappedName = COUNTRY_CODE_MAP[lowerCountry]
+          if (mappedName && currentCountry !== mappedName) {
+            batch.update(doc(db, "consultantProfiles", docSnap.id), {
+              country: mappedName,
+              updatedAt: serverTimestamp()
+            });
+            migratedCount++;
+            
+            if (migratedCount % 400 === 0) {
+              await batch.commit();
+              batch = writeBatch(db);
+            }
+          }
+        }
+      }
+      if (migratedCount % 400 !== 0 && migratedCount > 0) {
+        await batch.commit();
+      }
+      
+      toast({
+        title: "Migration Complete",
+        description: `Successfully migrated ${migratedCount} profiles.`,
+      })
+      if (migratedCount > 0) setRefreshTrigger(prev => prev + 1);
+    } catch (err) {
+      console.error("Migration failed:", err)
+      toast({
+        variant: "destructive",
+        title: "Migration Failed",
+        description: "An error occurred during migration."
+      })
+    } finally {
+      setIsMigrating(false)
+    }
+  }
+
   const oppFieldsQuery = useMemo(() => query(collection(db, "opportunityFields")), [db]);
   const { data: oppFields } = useCollection(oppFieldsQuery as any);
 
@@ -125,32 +177,6 @@ export function AdminDirectory() {
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const { toast } = useToast()
 
-  // Auto-migrate legacy country codes when the admin directory is opened
-  useEffect(() => {
-    const migrateLegacyProfiles = async () => {
-      try {
-        const querySnapshot = await getDocs(collection(db, "consultantProfiles"))
-        for (const docSnap of querySnapshot.docs) {
-          const data = docSnap.data()
-          const currentCountry = data.country
-          if (currentCountry) {
-            const lowerCountry = currentCountry.toLowerCase().trim()
-            const mappedName = COUNTRY_CODE_MAP[lowerCountry]
-            if (mappedName && currentCountry !== mappedName) {
-              await updateDoc(doc(db, "consultantProfiles", docSnap.id), {
-                country: mappedName,
-                updatedAt: serverTimestamp()
-              })
-            }
-          }
-        }
-      } catch (err) {
-        console.error("Auto-migration of legacy country codes failed:", err)
-      }
-    }
-    
-    migrateLegacyProfiles()
-  }, [db])
 
   const [visibleColumns, setVisibleColumns] = useState({
     phone: false,
@@ -182,9 +208,27 @@ export function AdminDirectory() {
 
   const handleExport = async () => {
     try {
-      toast({ title: "Generating Export", description: "Fetching complete database..." })
-      const snapshot = await getDocs(collection(db, "consultantProfiles"));
-      const allConsultants = snapshot.docs.map(doc => doc.data() as Consultant);
+      toast({ title: "Generating Export", description: "Fetching complete database in chunks..." })
+      
+      let allConsultants: Consultant[] = [];
+      let lastDoc = null;
+      let hasMore = true;
+      
+      while (hasMore) {
+        let q = query(collection(db, "consultantProfiles"), limit(1000));
+        if (lastDoc) {
+          q = query(collection(db, "consultantProfiles"), startAfter(lastDoc), limit(1000));
+        }
+        
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) {
+          hasMore = false;
+          break;
+        }
+        
+        allConsultants.push(...snapshot.docs.map(doc => doc.data() as Consultant));
+        lastDoc = snapshot.docs[snapshot.docs.length - 1];
+      }
       
       const csvContent = "data:text/csv;charset=utf-8," 
         + ["Name,Last Name,Email,Country,Profession,Years Experience,Sector,Status"].join(",") + "\n"
@@ -203,6 +247,7 @@ export function AdminDirectory() {
         description: `Exported ${allConsultants.length} total consultant profiles.`
       })
     } catch (err) {
+      console.error("Export Failed", err);
       toast({ title: "Export Failed", variant: "destructive" })
     }
   }
@@ -277,20 +322,29 @@ export function AdminDirectory() {
 
   const handleBulkVerify = async () => {
     if (selectedIds.length === 0) return;
-    const batch = writeBatch(db);
-    selectedIds.forEach(id => {
-      const docRef = doc(db, "consultantProfiles", id);
-      batch.update(docRef, { status: 'verified' });
-    });
     
     try {
-      await batch.commit();
+      const chunks = [];
+      for (let i = 0; i < selectedIds.length; i += 400) {
+        chunks.push(selectedIds.slice(i, i + 400));
+      }
+      
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        chunk.forEach(id => {
+          const docRef = doc(db, "consultantProfiles", id);
+          batch.update(docRef, { status: 'verified' });
+        });
+        await batch.commit();
+      }
+      
       toast({
         title: "Bulk Verify Successful",
         description: `Marked ${selectedIds.length} profiles as verified.`
       });
       setSelectedIds([]);
     } catch (err) {
+      console.error("Bulk Verify Failed", err);
       toast({ variant: "destructive", title: "Bulk Verify Failed" });
     }
   }
@@ -301,13 +355,20 @@ export function AdminDirectory() {
       return;
     }
     
-    const batch = writeBatch(db);
-    selectedIds.forEach(id => {
-      batch.delete(doc(db, "consultantProfiles", id));
-    });
-    
     try {
-      await batch.commit();
+      const chunks = [];
+      for (let i = 0; i < selectedIds.length; i += 400) {
+        chunks.push(selectedIds.slice(i, i + 400));
+      }
+      
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        chunk.forEach(id => {
+          batch.delete(doc(db, "consultantProfiles", id));
+        });
+        await batch.commit();
+      }
+      
       toast({
         title: "Bulk Delete Successful",
         description: `Successfully deleted ${selectedIds.length} consultant profiles.`
@@ -393,6 +454,22 @@ export function AdminDirectory() {
             Import CSV
           </Button>
           
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <Settings2 className="mr-2 h-4 w-4" />
+                Actions
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuLabel>Admin Actions</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleMigrateCountries} disabled={isMigrating}>
+                <Globe className="mr-2 h-4 w-4" /> {isMigrating ? "Migrating..." : "Migrate Countries"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline">
@@ -606,18 +683,12 @@ export function AdminDirectory() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            <AnimatePresence mode="popLayout">
-              {filteredConsultants.map((consultant, index) => (
-                <motion.tr 
-                  key={consultant.id} 
-                  variants={itemVariants}
-                  initial="hidden"
-                  animate="show"
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.2, delay: index * 0.03 }}
-                  className={`hover:bg-muted/30 transition-colors cursor-pointer group border-b ${selectedIds.includes(consultant.id) ? 'bg-primary/5' : ''}`}
-                  onClick={() => handleRowClick(consultant)}
-                >
+            {filteredConsultants.map((consultant) => (
+              <TableRow 
+                key={consultant.id} 
+                className={`hover:bg-muted/30 transition-colors cursor-pointer group border-b ${selectedIds.includes(consultant.id) ? 'bg-primary/5' : ''}`}
+                onClick={() => handleRowClick(consultant)}
+              >
                   <TableCell onClick={(e) => e.stopPropagation()} className="pl-6">
                   <Checkbox 
                     checked={selectedIds.includes(consultant.id)}
@@ -691,9 +762,8 @@ export function AdminDirectory() {
                     </Button>
                   </div>
                 </TableCell>
-              </motion.tr>
+              </TableRow>
             ))}
-          </AnimatePresence>
           </TableBody>
           </Table>
         </div>

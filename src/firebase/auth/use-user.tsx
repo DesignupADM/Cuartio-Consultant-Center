@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { useAuth, useFirestore } from '../provider';
@@ -93,7 +93,19 @@ async function resolveInitialProfile(db: ReturnType<typeof useFirestore>, fireba
   return request;
 }
 
-export function useUser() {
+interface UserContextType {
+  user: User | null;
+  profile: UserProfile | null;
+  loading: boolean;
+}
+
+const UserContext = createContext<UserContextType>({
+  user: null,
+  profile: null,
+  loading: true,
+});
+
+export function UserProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const db = useFirestore();
   const [user, setUser] = useState<User | null>(null);
@@ -184,5 +196,13 @@ export function useUser() {
     };
   }, [auth, db]);
 
-  return { user, profile, loading };
+  return (
+    <UserContext.Provider value={{ user, profile, loading }}>
+      {children}
+    </UserContext.Provider>
+  );
+}
+
+export function useUser() {
+  return useContext(UserContext);
 }

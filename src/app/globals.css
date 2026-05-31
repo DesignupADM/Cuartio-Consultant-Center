@@ -16,8 +16,8 @@
 @custom-variant data-inset (&[data-inset]);
 
 @theme {
-  --font-body: var(--font-inter), sans-serif;
-  --font-headline: var(--font-outfit), sans-serif;
+  --font-body: 'Inter Variable', sans-serif;
+  --font-headline: 'Outfit Variable', sans-serif;
   --font-code: monospace;
 
   --animate-accordion-down: accordion-down 0.2s ease-out;

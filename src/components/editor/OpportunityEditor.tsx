@@ -1,6 +1,15 @@
 "use client";
 
-import { Editor } from "@tinymce/tinymce-react";
+import dynamic from "next/dynamic";
+
+const Editor = dynamic(() => import("@tinymce/tinymce-react").then((mod) => mod.Editor), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[600px] flex items-center justify-center bg-muted/10 animate-pulse text-muted-foreground text-sm font-medium">
+      Loading rich text editor...
+    </div>
+  ),
+});
 import { useStorage } from "@/firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useRef } from "react";

@@ -1,21 +1,10 @@
 import type {Metadata} from 'next';
-import { Inter, Outfit } from 'next/font/google';
+import '@fontsource-variable/inter';
+import '@fontsource-variable/outfit';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from "@/firebase";
 import { ThemeProvider } from "@/components/theme-provider";
-
-const inter = Inter({
-  subsets: ['latin'],
-  variable: '--font-inter',
-  display: 'swap',
-});
-
-const outfit = Outfit({
-  subsets: ['latin'],
-  variable: '--font-outfit',
-  display: 'swap',
-});
 
 export const metadata: Metadata = {
   title: 'CIF Consultant Management',
@@ -34,7 +23,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${outfit.variable} font-body antialiased`}>
+      <body className="font-body antialiased">
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

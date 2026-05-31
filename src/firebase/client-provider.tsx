@@ -10,6 +10,8 @@ import { firebaseConfig } from './config';
 import { FirebaseProvider } from './provider';
 import { FirebaseErrorListener } from '@/components/FirebaseErrorListener';
 
+import { UserProvider } from './auth/use-user';
+
 export function FirebaseClientProvider({ children }: { children: React.ReactNode }) {
   const { app, db, auth, storage } = useMemo(() => {
     const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
@@ -22,7 +24,9 @@ export function FirebaseClientProvider({ children }: { children: React.ReactNode
   return (
     <FirebaseProvider app={app} db={db} auth={auth} storage={storage}>
       <FirebaseErrorListener />
-      {children}
+      <UserProvider>
+        {children}
+      </UserProvider>
     </FirebaseProvider>
   );
 }
