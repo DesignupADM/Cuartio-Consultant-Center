@@ -10,11 +10,14 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useAuth, useFirestore } from "@/firebase"
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth"
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail } from "firebase/auth"
 import { getUserProfile, createUserProfile } from "@/firebase/firestore/users"
 import { useUser } from "@/firebase/auth/use-user"
 import Link from "next/link"
+import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore"
 
 export default function LoginPage() {
   const router = useRouter()
@@ -25,6 +28,50 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [showConsultantPassword, setShowConsultantPassword] = useState(false)
+  const [showAdminPassword, setShowAdminPassword] = useState(false)
+
+  // Password Reset Modal states
+  const [isResetOpen, setIsResetOpen] = useState(false)
+  const [resetEmail, setResetEmail] = useState("")
+  const [isResetLoading, setIsResetLoading] = useState(false)
+
+  const handleForgotPasswordTrigger = (e: React.MouseEvent) => {
+    e.preventDefault()
+    setResetEmail(email) // Pre-fill with login email state if entered
+    setIsResetOpen(true)
+  }
+
+  const handleSendResetEmail = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const cleanEmail = resetEmail.toLowerCase().trim()
+    if (!cleanEmail) {
+      toast({
+        title: "Email Required",
+        description: "Please enter a valid email address.",
+        variant: "destructive",
+      })
+      return
+    }
+    
+    setIsResetLoading(true)
+    try {
+      await sendPasswordResetEmail(auth, cleanEmail)
+      toast({
+        title: "Reset Email Sent",
+        description: `A password reset link has been sent to ${cleanEmail}.`,
+      })
+      setIsResetOpen(false)
+    } catch (error: any) {
+      toast({
+        title: "Reset Failed",
+        description: error.message || "Could not send password reset email.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsResetLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (user && !authLoading) {
@@ -48,23 +95,40 @@ export default function LoginPage() {
     
     try {
       const result = await signInWithPopup(auth, provider)
-      const profile = await getUserProfile(db, result.user.uid)
+      const cleanEmail = result.user.email?.toLowerCase().trim() || ""
+      const pendingAdminRef = doc(db, "adminRoles", `email:${cleanEmail}`)
+      const pendingAdminSnap = await getDoc(pendingAdminRef)
       
-      if (!profile) {
-        // Create a default consultant profile for new Google users
-        const newProfile = {
-          uid: result.user.uid,
-          email: result.user.email,
-          role: "consultant" as const,
-          displayName: result.user.displayName || "",
-          firstName: result.user.displayName?.split(" ")[0] || "",
-          lastName: result.user.displayName?.split(" ").slice(1).join(" ") || "",
+      if (pendingAdminSnap.exists()) {
+        const adminData = pendingAdminSnap.data()
+        await setDoc(doc(db, "adminRoles", result.user.uid), {
+          firstName: adminData.firstName || result.user.displayName?.split(" ")[0] || "",
+          lastName: adminData.lastName || result.user.displayName?.split(" ").slice(1).join(" ") || "",
+          email: cleanEmail,
+          role: "admin",
+          enabled: true,
           createdAt: new Date().toISOString()
-        }
-        await createUserProfile(db, newProfile)
-        window.location.href = "/dashboard?role=consultant"
+        })
+        await deleteDoc(pendingAdminRef)
+        window.location.href = "/dashboard?role=admin"
       } else {
-        router.push(`/dashboard?role=${profile.role}`)
+        const profile = await getUserProfile(db, result.user.uid)
+        if (!profile) {
+          // Create a default consultant profile for new Google users
+          const newProfile = {
+            uid: result.user.uid,
+            email: result.user.email,
+            role: "consultant" as const,
+            displayName: result.user.displayName || "",
+            firstName: result.user.displayName?.split(" ")[0] || "",
+            lastName: result.user.displayName?.split(" ").slice(1).join(" ") || "",
+            createdAt: new Date().toISOString()
+          }
+          await createUserProfile(db, newProfile)
+          window.location.href = "/dashboard?role=consultant"
+        } else {
+          router.push(`/dashboard?role=${profile.role}`)
+        }
       }
     } catch (error: any) {
       toast({
@@ -123,7 +187,7 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4 md:p-8">
       <div className="w-full max-w-4xl z-10">
-        <Card className="overflow-hidden border-none shadow-2xl">
+        <Card className="overflow-hidden border-none shadow-2xl p-0 py-0 gap-0">
           <CardContent className="grid p-0 md:grid-cols-2">
             <div className="p-6 md:p-10 flex flex-col justify-center">
               <div className="flex flex-col items-center mb-8">
@@ -169,15 +233,35 @@ export default function LoginPage() {
                     <div className="space-y-2">
                       <div className="flex items-center">
                         <Label htmlFor="password">Password</Label>
-                        <a href="#" className="ml-auto text-xs underline-offset-2 hover:underline">Forgot your password?</a>
+                        <a 
+                          href="#" 
+                          onClick={handleForgotPasswordTrigger}
+                          className="ml-auto text-xs underline-offset-2 hover:underline text-primary/80 hover:text-primary font-medium"
+                        >
+                          Forgot your password?
+                        </a>
                       </div>
-                      <Input 
-                        id="password" 
-                        type="password" 
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required 
-                      />
+                      <div className="relative">
+                        <Input 
+                          id="password" 
+                          type={showConsultantPassword ? "text" : "password"} 
+                          className="pr-10"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required 
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConsultantPassword(!showConsultantPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {showConsultantPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                     <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={isLoading}>
                       {isLoading ? "Signing in..." : "Sign in as Consultant"}
@@ -201,14 +285,35 @@ export default function LoginPage() {
                     <div className="space-y-2">
                       <div className="flex items-center">
                         <Label htmlFor="admin-password">Password</Label>
+                        <a 
+                          href="#" 
+                          onClick={handleForgotPasswordTrigger}
+                          className="ml-auto text-xs underline-offset-2 hover:underline text-primary/80 hover:text-primary font-medium"
+                        >
+                          Forgot your password?
+                        </a>
                       </div>
-                      <Input 
-                        id="admin-password" 
-                        type="password" 
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required 
-                      />
+                      <div className="relative">
+                        <Input 
+                          id="admin-password" 
+                          type={showAdminPassword ? "text" : "password"} 
+                          className="pr-10"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required 
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAdminPassword(!showAdminPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                        >
+                          {showAdminPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                     <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={isLoading}>
                       {isLoading ? "Verifying..." : "Sign in as Admin"}
@@ -264,12 +369,18 @@ export default function LoginPage() {
               </div>
             </div>
             
-            <div className="relative hidden bg-primary/5 md:block">
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(60,221,221,0.2),transparent_50%),radial-gradient(circle_at_bottom_left,rgba(38,102,166,0.2),transparent_50%)]" />
-              <div className="absolute inset-0 flex items-center justify-center p-8">
-                <div className="space-y-6 text-center">
+            <div className="relative hidden md:block overflow-hidden h-full">
+              <Image 
+                src="/login-screen.png" 
+                alt="Background Pattern" 
+                fill
+                priority
+                className="object-cover pointer-events-none" 
+              />
+              <div className="absolute inset-0 flex items-center justify-center p-8 z-10">
+                <div className="space-y-6 text-center bg-background/80 backdrop-blur-md p-8 rounded-2xl border shadow-xl max-w-md mx-auto">
                   <h2 className="text-3xl font-bold tracking-tight text-primary font-headline">CIF Consultant Network</h2>
-                  <p className="text-lg text-muted-foreground max-w-md mx-auto">
+                  <p className="text-base text-muted-foreground">
                     Join our global network of healthcare experts and connect with impactful projects worldwide.
                   </p>
                 </div>
@@ -279,9 +390,60 @@ export default function LoginPage() {
         </Card>
         
         <div className="mt-8 text-balance text-center text-xs text-muted-foreground [&_a]:underline [&_a]:underline-offset-4 [&_a]:hover:text-primary">
-          By signing in, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>.
+          By signing in, you agree to our <a href="https://curatiofoundation.org/privacy-policy/" target="_blank" rel="noopener noreferrer">Terms of Service</a> and <a href="https://curatiofoundation.org/privacy-policy/" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
         </div>
       </div>
+
+      {/* Password Reset Dialog */}
+      <Dialog open={isResetOpen} onOpenChange={setIsResetOpen}>
+        <DialogContent className="sm:max-w-md bg-background/95 backdrop-blur-md border shadow-2xl rounded-2xl p-6">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold tracking-tight text-primary font-headline">Reset Password</DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground mt-1">
+              Enter your email address below and we will send you a secure link to reset your account password.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSendResetEmail} className="space-y-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="reset-email" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Address</Label>
+              <Input
+                id="reset-email"
+                type="email"
+                placeholder="you@example.com"
+                value={resetEmail}
+                onChange={(e) => setResetEmail(e.target.value)}
+                required
+                className="h-11"
+              />
+            </div>
+            <DialogFooter className="flex sm:justify-end gap-2 pt-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsResetOpen(false)}
+                disabled={isResetLoading}
+                className="h-11 border-primary/10 hover:bg-muted/50"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isResetLoading}
+                className="h-11 bg-primary hover:bg-primary/90 flex items-center gap-2"
+              >
+                {isResetLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  "Send Reset Link"
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

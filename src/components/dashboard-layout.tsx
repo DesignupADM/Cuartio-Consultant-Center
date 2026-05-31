@@ -56,37 +56,41 @@ function DashboardShell({
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon" className="border-r border-border/50">
-        <SidebarHeader className="h-16 flex items-start justify-center border-b px-6 bg-card/50 backdrop-blur-sm">
-          <Link href={`/dashboard?role=${role}`} className="flex items-center gap-3 group-data-[collapsible=icon]:hidden transition-all hover:opacity-80">
-            <Image 
-              src="/logo-color.png" 
-              alt="CIF Logo" 
-              width={160} 
-              height={40} 
-              className="h-8 w-auto dark:hidden" 
-            />
-            <Image 
-              src="/logo-white.png" 
-              alt="CIF Logo" 
-              width={160} 
-              height={40} 
-              className="h-8 w-auto hidden dark:block" 
-            />
-          </Link>
-          <div className="hidden group-data-[collapsible=icon]:flex h-8 w-8 items-center justify-center overflow-hidden">
-            <div className="relative w-16 h-8 -left-1 shrink-0">
+        <SidebarHeader className="h-16 flex flex-col justify-center border-b px-6 bg-card/50 backdrop-blur-sm group-data-[collapsible=icon]:p-0">
+          <div className="w-full flex items-center justify-start group-data-[collapsible=icon]:justify-center">
+            <Link href={`/dashboard?role=${role}`} className="flex items-center gap-3 group-data-[collapsible=icon]:hidden transition-all hover:opacity-80">
               <Image 
                 src="/logo-color.png" 
-                alt="CIF Icon" 
-                fill
-                className="object-contain object-left dark:hidden" 
+                alt="CIF Logo" 
+                width={160} 
+                height={40} 
+                className="h-8 w-auto dark:hidden" 
               />
               <Image 
                 src="/logo-white.png" 
-                alt="CIF Icon" 
-                fill
-                className="object-contain object-left hidden dark:block" 
+                alt="CIF Logo" 
+                width={160} 
+                height={40} 
+                className="h-8 w-auto hidden dark:block" 
               />
+            </Link>
+            <div className="hidden group-data-[collapsible=icon]:flex h-8 w-8 items-center justify-center">
+              <Link href={`/dashboard?role=${role}`} className="flex items-center justify-center transition-all hover:opacity-80 shrink-0">
+                <Image 
+                  src="/Small_Logo_White.svg" 
+                  alt="CIF Icon" 
+                  width={32}
+                  height={32}
+                  className="h-8 w-8 object-contain dark:hidden" 
+                />
+                <Image 
+                  src="/small_logo_dark.svg" 
+                  alt="CIF Icon" 
+                  width={32}
+                  height={32}
+                  className="h-8 w-8 object-contain hidden dark:block" 
+                />
+              </Link>
             </div>
           </div>
         </SidebarHeader>
@@ -99,13 +103,15 @@ function DashboardShell({
               <SidebarMenuButton size="lg" asChild className="hover:bg-primary/5 rounded-xl transition-colors">
                 <Link href={`/dashboard/profile?role=${role}`}>
                   <Avatar className="h-10 w-10 rounded-xl border-2 border-primary/10 shadow-xs">
-                    <AvatarImage src={user?.photoURL || "https://picsum.photos/seed/user/80/80"} />
+                    <AvatarImage src={profile?.avatarUrl || user?.photoURL || "https://picsum.photos/seed/user/80/80"} />
                     <AvatarFallback className="rounded-xl bg-primary/10 text-primary font-bold">
-                      {user?.displayName?.charAt(0) || user?.email?.charAt(0).toUpperCase() || "JD"}
+                      {profile?.firstName?.charAt(0) || user?.displayName?.charAt(0) || user?.email?.charAt(0).toUpperCase() || "JD"}
                     </AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight group-data-[collapsible=icon]:hidden ml-2">
-                    <span className="truncate font-black text-foreground">{user?.displayName || user?.email || "John Doe"}</span>
+                    <span className="truncate font-black text-foreground">
+                      {profile?.firstName ? `${profile.firstName} ${profile.lastName || ""}`.trim() : (user?.displayName || user?.email || "John Doe")}
+                    </span>
                     <span className="truncate text-[10px] text-muted-foreground uppercase font-black tracking-widest">
                       {role === "admin" ? "Administrator" : "Consultant"}
                     </span>

@@ -6,9 +6,12 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useFirestore } from "@/firebase"
 import { useUser } from "@/firebase/auth/use-user"
-import { doc, setDoc, serverTimestamp } from "firebase/firestore"
+import { doc, setDoc, serverTimestamp, collection, getDocs, updateDoc, collectionGroup } from "firebase/firestore"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Sparkles, UserPlus, ShieldCheck } from "lucide-react"
+import { Loader2, Sparkles, UserPlus, ShieldCheck, Globe } from "lucide-react"
+import { COUNTRY_CODE_MAP } from "@/lib/countries"
+
+
 
 const TEST_USERS = [
   {
@@ -55,11 +58,71 @@ const TEST_USERS = [
   }
 ]
 
+
 export default function SeedPage() {
   const db = useFirestore()
   const { user, profile } = useUser()
   const { toast } = useToast()
   const [loading, setLoading] = useState(false)
+  const [migrating, setMigrating] = useState(false)
+
+  const handleMigrate = async () => {
+    setMigrating(true)
+    try {
+      let updatedProfiles = 0
+      let updatedApplicants = 0
+      
+      // 1. Migrate consultantProfiles
+      const profileSnapshot = await getDocs(collection(db, "consultantProfiles"))
+      for (const docSnap of profileSnapshot.docs) {
+        const data = docSnap.data()
+        const currentCountry = data.country
+        if (currentCountry) {
+          const lowerCountry = currentCountry.toLowerCase().trim()
+          const mappedName = COUNTRY_CODE_MAP[lowerCountry]
+          if (mappedName && currentCountry !== mappedName) {
+            await updateDoc(doc(db, "consultantProfiles", docSnap.id), {
+              country: mappedName,
+              updatedAt: serverTimestamp()
+            })
+            updatedProfiles++
+          }
+        }
+      }
+      
+      // 2. Migrate opportunity applicants (location field)
+      const applicantsSnapshot = await getDocs(collectionGroup(db, "applicants"))
+      for (const docSnap of applicantsSnapshot.docs) {
+        const data = docSnap.data()
+        const currentLocation = data.location
+        if (currentLocation) {
+          const lowerLocation = currentLocation.toLowerCase().trim()
+          const mappedName = COUNTRY_CODE_MAP[lowerLocation]
+          if (mappedName && currentLocation !== mappedName) {
+            await updateDoc(docSnap.ref, {
+              location: mappedName
+            })
+            updatedApplicants++
+          }
+        }
+      }
+      
+      toast({
+        title: "Migration Complete",
+        description: `Successfully updated ${updatedProfiles} consultant profiles and ${updatedApplicants} applicant records to full country names.`,
+      })
+    } catch (error: any) {
+      console.error("Migration error:", error)
+      toast({
+        variant: "destructive",
+        title: "Migration Failed",
+        description: error.message || "Permissions error. Check Firestore rules.",
+      })
+    } finally {
+      setMigrating(false)
+    }
+  }
+
 
   const handleSeed = async () => {
     setLoading(true)
@@ -157,13 +220,48 @@ export default function SeedPage() {
           </CardContent>
         </Card>
 
+        <Card className="border-none shadow-xl bg-card/60 backdrop-blur-xs ring-1 ring-border">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5 text-primary" />
+              Country Data Migration
+            </CardTitle>
+            <CardDescription>
+              Updates existing consultant profiles and opportunity application records from country codes (e.g., uk, us) to their full names.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="bg-muted/30 p-4 rounded-xl space-y-2 text-sm text-muted-foreground">
+              <p>This utility scans all Firestore profiles and applicant collections, converting legacy 2-letter codes to full names to ensure search filter consistency.</p>
+            </div>
+
+            <Button 
+              className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-bold" 
+              onClick={handleMigrate}
+              disabled={migrating}
+            >
+              {migrating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Running Country Migration...
+                </>
+              ) : (
+                <>
+                  <Globe className="mr-2 h-4 w-4" />
+                  Migrate Country Codes to Names
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
         <div className="bg-amber-500/10 border border-amber-500/20 p-6 rounded-2xl flex gap-4">
           <ShieldCheck className="h-6 w-6 text-amber-600 shrink-0 mt-1" />
           <div className="text-sm">
             <h4 className="font-bold text-amber-900">Permissions Check</h4>
             <p className="text-amber-800/80 mt-1 leading-relaxed">
-              If the seeding fails, it is likely due to the Firestore security rules which restrict profile creation to the owner. 
-              To fix this, you may need to temporarily set `allow write: if true;` for `consultantProfiles` in your `firestore.rules`.
+              If the seeding or migration fails, it is likely due to the Firestore security rules which restrict writes. 
+              To fix this, ensure your admin user has appropriate write permissions or temporarily adjust rules for migration.
             </p>
           </div>
         </div>

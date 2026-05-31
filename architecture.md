@@ -218,3 +218,61 @@ The platform supports robust dynamic form generation and custom data collection 
 *   **Data Flow**: When a consultant applies, their custom field answers and uploaded CV URL are saved to the local `ApplicantData` subcollection.
 *   **Profile Synchronization**: To ensure custom answers are searchable and visible globally, the `applyToOpportunity` function in [opportunities.ts](file:///Users/elene/Documents/Curatio%20Consultatnt/src/firebase/firestore/opportunities.ts) executes a Firestore batch write to merge the new answers into the consultant's main `/consultantProfiles/{uid}` document under a `customAnswers` object.
 *   **Directory Visibility**: The central `AdminDirectory` component seamlessly parses these `customAnswers`, cross-referencing keys against the global registry to display a rich, dynamically generated "Project Application Data" view in the consultant's side-panel profile.
+
+---
+
+## 8. CSV Import & Bulk Actions Workflows
+
+To support bulk migration and management of expert networks, the directory features clean CSV uploading and batch administrative actions.
+
+### A. CSV Import Wizard & Dynamic Schema Mapping
+*   **Component**: [csv-import-dialog.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/components/dashboard/directory/csv-import-dialog.tsx)
+*   **Workflow Steps**:
+    1.  **File Parsing**: Performs client-side CSV parsing.
+    2.  **Schema Alignment**: Automatically maps CSV headers to Core Profile attributes or existing custom fields.
+    3.  **Unrecognized Columns**: Identifies CSV headers not present in the database. Provides options to:
+        - **Skip**: Do not import this column.
+        - **Create as Registration Question**: Registers the field in `/settings/registration/questions`.
+        - **Create as Project Field**: Registers the field in `/opportunityFields`.
+        - **Map to Existing**: Maps to any core/custom property.
+    4.  **Confirm & Preview**: Generates a tabular preview showing data normalization (number parsing, country name mapping).
+    5.  **Batch Write**: Commits transactions to Firestore. Large datasets are chunked into safe batches of 150 profiles (creating up to 300 documents in `/consultantProfiles` and `/consultantRoles` to stay under the 500-operation limit).
+    6.  **Refresh Trigger**: Increments a counter that forces the parent directory component to re-fetch the paginated directory.
+
+### B. Bulk Operations
+*   **Component**: [admin-directory.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/components/dashboard/directory/admin-directory.tsx)
+*   **Supported Actions**:
+    - **Bulk Verify**: Batches updates to `status: 'verified'` across selected UIDs.
+    - **Bulk Delete**: Prompts for confirmation and deletes selected profiles from `/consultantProfiles` via a `writeBatch` write. Role records `/consultantRoles` are bypassed during client-side deletion to align with permission rules (`allow update, delete: if false`).
+
+---
+
+## 9. Executive Analytics & Reporting Flow
+
+The platform synthesizes raw operational data into high-level business intelligence to support executive decision-making.
+
+### A. Real-Time Data Aggregation
+*   **Component / Page**: [page.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/app/dashboard/analytics/page.tsx)
+*   **Data Aggregation Sources**:
+    - **Consultant Supply**: Listens to `/consultantProfiles` to analyze sector expertise, geographical distribution, and profile completion rates.
+    - **Opportunities**: Queries `/opportunities` to track active, draft, and closed mandates.
+    - **Applicant Pipeline**: Performs a Firestore `collectionGroup` query across all `/applicants` subcollections. This allows flattening applications across all distinct opportunities into a single stream to evaluate review velocity, shortlist ratios, and rejection rates.
+*   **Interactive Visualizations**:
+    - **Geographical Reach**: Bar chart mapping active consultant locations.
+    - **Pipeline Funnel**: Funnel conversion displaying transition rates from initial application to review, shortlist, and project assignment.
+    - **Competency Matrix**: Radar chart plotting supply vs demand (comparing custom opportunity requirement tags against registered consultant sector experience).
+    - **Executive Insights**: Generates automated recommendations based on supply gaps (e.g., highlighting sector areas where applicant demand exceeds consultant supply).
+
+---
+
+## 10. Seeding & Data Migration Utilities
+
+For testing and database maintenance, the platform includes automated seeding and batch schema migration tools.
+
+### A. Development Database Seeding
+*   **Component / Page**: [page.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/app/dashboard/seed/page.tsx)
+*   **Purpose**: Creates pre-configured consultant mock accounts ( Sarah Jenkins, Marcus Chen, Elena Rossi) with diverse sectors, years of experience, status tags, and matching role credentials to test directory layouts, matchmaking algorithms, and authentication states.
+
+### B. Country Code Data Migration
+*   **Location**: Seed Page & Auto-Trigger in Admin Directory.
+*   **Logic**: Loops through all `/consultantProfiles` and applicant records, checking for legacy ISO 2-letter country codes (e.g., `us`, `uk`, `de`). It maps them to their standardized full country names using the global `COUNTRY_CODE_MAP` configuration to maintain search index and dropdown filtering integrity.

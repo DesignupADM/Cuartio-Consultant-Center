@@ -19,11 +19,12 @@ function buildConsultantProfile(firebaseUser: User, data?: Record<string, unknow
   } as UserProfile;
 }
 
-function buildAdminProfile(firebaseUser: User): UserProfile {
+function buildAdminProfile(firebaseUser: User, data?: Record<string, unknown>): UserProfile {
   return {
     uid: firebaseUser.uid,
     role: "admin",
     email: firebaseUser.email,
+    ...(data || {}),
   };
 }
 
@@ -64,7 +65,7 @@ async function resolveInitialProfile(db: ReturnType<typeof useFirestore>, fireba
     ]);
 
     if (adminSnap.exists()) {
-      const resolvedProfile = buildAdminProfile(firebaseUser);
+      const resolvedProfile = buildAdminProfile(firebaseUser, adminSnap.data());
       profileCache.set(firebaseUser.uid, resolvedProfile);
       return resolvedProfile;
     }
@@ -128,7 +129,23 @@ export function useUser() {
           setProfile(resolvedProfile);
           setLoading(false);
 
-          if (resolvedProfile?.role === "consultant") {
+          if (resolvedProfile?.role === "admin") {
+            const adminRef = doc(db, "adminRoles", firebaseUser.uid);
+            unsubscribeProfile = onSnapshot(
+              adminRef,
+              (docSnap) => {
+                const nextProfile = docSnap.exists()
+                  ? buildAdminProfile(firebaseUser, docSnap.data())
+                  : buildAdminProfile(firebaseUser);
+
+                profileCache.set(firebaseUser.uid, nextProfile);
+                setProfile(nextProfile);
+              },
+              (err) => {
+                console.error("Admin profile listener error:", err);
+              }
+            );
+          } else if (resolvedProfile?.role === "consultant") {
             const profileRef = doc(db, "consultantProfiles", firebaseUser.uid);
             unsubscribeProfile = onSnapshot(
               profileRef,

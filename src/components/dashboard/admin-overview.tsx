@@ -44,13 +44,13 @@ type ConsultantProfileRecord = {
 const chartConfig = {
   apps: {
     label: "Registrations",
-    color: "hsl(var(--primary))",
+    color: "#2563eb",
   },
-  Energy: { label: "Energy", color: "hsl(var(--foreground))" },
-  Infrastructure: { label: "Infrastructure", color: "hsl(var(--muted-foreground))" },
-  Tech: { label: "Tech", color: "hsl(var(--primary))" },
-  Finance: { label: "Finance", color: "hsl(var(--foreground))" },
-  Legal: { label: "Legal", color: "hsl(var(--muted-foreground))" },
+  Energy: { label: "Energy", color: "#1e3a8a" },
+  Infrastructure: { label: "Infrastructure", color: "#2563eb" },
+  Tech: { label: "Tech", color: "#3b82f6" },
+  Finance: { label: "Finance", color: "#60a5fa" },
+  Legal: { label: "Legal", color: "#93c5fd" },
 } satisfies ChartConfig
 
 function toDate(value: { toDate?: () => Date } | string | null | undefined): Date | null {
@@ -97,8 +97,18 @@ export function AdminOverview() {
   }, [db])
 
   // Fetch only the latest 100 consultants for charts and recent feed
-  const recentConsultantsQuery = useMemo(() => query(collection(db, "consultantProfiles"), orderBy("createdAt", "desc"), limit(100)), [db])
+  // Bypassing orderBy on Firestore to avoid index requirements, and sorting client-side
+  const recentConsultantsQuery = useMemo(() => query(collection(db, "consultantProfiles"), limit(100)), [db])
   const { data: recentConsultants, loading: recentConsultantsLoading } = useCollection<ConsultantProfileRecord>(recentConsultantsQuery as any)
+
+  const sortedRecentConsultants = useMemo(() => {
+    if (!recentConsultants) return []
+    return [...recentConsultants].sort((a, b) => {
+      const dateA = toDate(a.createdAt)?.getTime() || 0
+      const dateB = toDate(b.createdAt)?.getTime() || 0
+      return dateB - dateA
+    })
+  }, [recentConsultants])
 
   const adminStats = [
     { title: "Total Consultants", value: totalConsultants === null ? "..." : totalConsultants.toLocaleString(), description: "Active users in the network", icon: Users, color: "bg-blue-50 text-blue-600", href: `/dashboard/directory` },
@@ -109,30 +119,30 @@ export function AdminOverview() {
 
   // Sector data is computed from the most recent 100, instead of blocking the entire dashboard performance by downloading thousands.
   const sectorData = useMemo(() => {
-    if (!recentConsultants || recentConsultants.length === 0) return []
+    if (!sortedRecentConsultants || sortedRecentConsultants.length === 0) return []
     
     const distribution: Record<string, number> = {}
-    recentConsultants.forEach((c: any) => {
+    sortedRecentConsultants.forEach((c: any) => {
       const sector = c.sector || "Uncategorized"
       distribution[sector] = (distribution[sector] || 0) + 1
     })
 
-    const colors = [
-      "hsl(var(--primary))", 
-      "hsl(var(--foreground))", 
-      "hsla(var(--foreground), 0.7)", 
-      "hsla(var(--foreground), 0.4)", 
-      "hsla(var(--foreground), 0.2)"
+    const colorsList = [
+      "#1e3a8a", // Deep Indigo/Dark Blue
+      "#2563eb", // Royal Cobalt
+      "#3b82f6", // Classic Blue
+      "#60a5fa", // Horizon Light Blue
+      "#93c5fd"  // Soft Pastel Blue
     ]
     return Object.entries(distribution).map(([name, value], i) => ({
       name,
       value,
-      color: colors[i % colors.length]
+      color: colorsList[i % colorsList.length]
     })).sort((a, b) => b.value - a.value)
-  }, [recentConsultants])
+  }, [sortedRecentConsultants])
 
   const trendData = useMemo(() => {
-    if (!recentConsultants || recentConsultants.length === 0) return [
+    if (!sortedRecentConsultants || sortedRecentConsultants.length === 0) return [
       { month: "Jan", apps: 0 },
       { month: "Feb", apps: 0 },
       { month: "Mar", apps: 0 },
@@ -150,7 +160,7 @@ export function AdminOverview() {
       counts[m] = 0;
     }
 
-    recentConsultants.forEach((c: any) => {
+    sortedRecentConsultants.forEach((c: any) => {
       const date = toDate(c.createdAt) || new Date();
       // eslint-disable-next-line react-hooks/purity
       if (Date.now() - date.getTime() > 1000 * 60 * 60 * 24 * 180) return; // ignore older than 6mo
@@ -161,7 +171,7 @@ export function AdminOverview() {
     });
 
     return Object.entries(counts).map(([month, apps]) => ({ month, apps }));
-  }, [recentConsultants]);
+  }, [sortedRecentConsultants]);
 
   const statsCalculations = useMemo(() => {
     const totalSectors = sectorData.reduce((acc, s) => acc + s.value, 0);
@@ -285,8 +295,8 @@ export function AdminOverview() {
               <AreaChart data={trendData} margin={{ left: 0, right: 0, top: 10 }}>
                 <defs>
                   <linearGradient id="colorApps" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.15}/>
-                    <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.15}/>
+                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <XAxis 
@@ -307,7 +317,7 @@ export function AdminOverview() {
                 <Area 
                   type="monotone" 
                   dataKey="apps" 
-                  stroke="hsl(var(--primary))" 
+                  stroke="#2563eb" 
                   strokeWidth={3} 
                   fillOpacity={1} 
                   fill="url(#colorApps)" 
@@ -368,7 +378,7 @@ export function AdminOverview() {
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y divide-muted/30">
-              {recentConsultants && recentConsultants.slice(0, 4).map((c: any, i: number) => (
+              {sortedRecentConsultants && sortedRecentConsultants.slice(0, 4).map((c: any, i: number) => (
                 <div key={c.id || i} className="flex items-center p-5 hover:bg-muted/10 transition-colors group cursor-pointer">
                   <div className="h-10 w-10 rounded-2xl bg-primary/5 flex items-center justify-center border border-primary/10 transition-transform group-hover:scale-105">
                     <Users className="h-5 w-5 text-primary" />

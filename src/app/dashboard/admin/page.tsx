@@ -175,11 +175,23 @@ export default function AdminPanelPage() {
     e.preventDefault()
     setIsSaving(true)
     try {
+      const cleanEmail = adminForm.email.toLowerCase().trim()
       if (editingAdmin) {
-        await updateDoc(doc(db, "adminRoles", editingAdmin.id), adminForm)
+        await updateDoc(doc(db, "adminRoles", editingAdmin.id), {
+          ...adminForm,
+          email: cleanEmail
+        })
         toast({ title: "Admin Updated" })
       } else {
-        await addDoc(collection(db, "adminRoles"), { ...adminForm, role: 'admin' })
+        const emailKey = `email:${cleanEmail}`
+        await setDoc(doc(db, "adminRoles", emailKey), {
+          ...adminForm,
+          email: cleanEmail,
+          role: 'admin',
+          enabled: true,
+          isPending: true,
+          createdAt: new Date().toISOString()
+        })
         toast({ title: "Admin Added" })
       }
       setIsAdminDialogOpen(false)

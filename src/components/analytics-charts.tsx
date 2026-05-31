@@ -24,14 +24,23 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 
-// --- Custom Colors for High-Contrast Theme ---
+// --- Custom Colors for Premium Dark Blue Theme ---
 const colors = {
-  primary: "hsl(var(--primary))",
-  muted: "hsl(var(--muted))",
+  primary: "#1e3a8a", // Dark Blue (Core)
+  accent: "#2563eb",  // Royal Blue (Focus)
+  highlight: "#3b82f6", // Bright Blue
+  lightBlue: "#60a5fa", // Sky Blue
+  softBlue: "#93c5fd", // Soft Ice Blue
   border: "hsl(var(--border))",
   foreground: "hsl(var(--foreground))",
-  accent: "hsl(var(--accent))",
-  vibrant: ["#000000", "#333333", "#666666", "#999999", "#CCCCCC"]
+  muted: "hsl(var(--muted-foreground))",
+  blues: [
+    "#1e3a8a", // Deep Indigo/Dark Blue
+    "#2563eb", // Royal Cobalt
+    "#3b82f6", // Classic Blue
+    "#60a5fa", // Horizon Light Blue
+    "#93c5fd"  // Soft Pastel Blue
+  ]
 }
 
 // --- 1. Pipeline Funnel (Simplified Bar Chart) ---
@@ -72,7 +81,7 @@ export function PipelineFunnel({ data }: { data: any[] }) {
               />
               <Bar dataKey="value" radius={[0, 4, 4, 0]}>
                 {data.map((entry, index) => (
-                   <Cell key={`cell-${index}`} fill={index === 0 ? "hsl(var(--primary))" : `hsla(var(--primary), ${1 - (index * 0.2)})`} />
+                   <Cell key={`cell-${index}`} fill={colors.blues[index % colors.blues.length]} />
                 ))}
               </Bar>
             </BarChart>
@@ -98,7 +107,7 @@ export function GeographicalReach({ data }: { data: any[] }) {
               <XAxis dataKey="region" axisLine={false} tickLine={false} fontSize={10} className="font-medium" />
               <YAxis axisLine={false} tickLine={false} fontSize={10} className="font-medium" />
               <Tooltip 
-                cursor={{ fill: 'hsla(var(--primary), 0.05)' }}
+                cursor={{ fill: 'rgba(59, 130, 246, 0.05)' }}
                 content={({ active, payload }) => {
                    if (active && payload && payload.length) {
                      return (
@@ -111,7 +120,11 @@ export function GeographicalReach({ data }: { data: any[] }) {
                    return null
                 }}
               />
-              <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} barSize={40} />
+              <Bar dataKey="count" radius={[4, 4, 0, 0]} barSize={40}>
+                {data.map((entry, index) => (
+                   <Cell key={`cell-${index}`} fill={colors.blues[index % colors.blues.length]} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -132,36 +145,36 @@ export function SkillsMatrix({ data }: { data: any[] }) {
         <div className="h-[280px] w-full mt-4">
           <ResponsiveContainer width="100%" height="100%">
             <RadarChart cx="50%" cy="50%" outerRadius="70%" data={data}>
-              <PolarGrid stroke="hsl(var(--border))" strokeOpacity={0.5} />
-              <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))", fontWeight: 700 }} />
+              <PolarGrid stroke={colors.border} strokeOpacity={0.5} />
+              <PolarAngleAxis dataKey="subject" tick={{ fontSize: 10, fill: colors.muted, fontWeight: 700 }} />
               <Radar
                 name="Demand"
                 dataKey="A"
-                stroke="hsl(var(--primary))"
-                fill="hsl(var(--primary))"
-                fillOpacity={0.2}
+                stroke={colors.primary}
+                fill={colors.primary}
+                fillOpacity={0.3}
                 strokeWidth={2}
               />
               <Radar
                 name="Supply"
                 dataKey="B"
-                stroke="hsl(var(--accent))"
-                fill="hsl(var(--accent))"
-                fillOpacity={0.1}
+                stroke={colors.highlight}
+                fill={colors.highlight}
+                fillOpacity={0.15}
                 strokeWidth={2}
               />
               <Tooltip content={({ active, payload }) => {
                 if (active && payload && payload.length) {
                   return (
                     <div className="bg-background border px-3 py-2 rounded-lg shadow-xl ring-1 ring-border text-xs">
-                      <p className="font-black uppercase mb-1">{payload[0].payload.subject}</p>
-                      {payload.map((p: any) => (
-                        <div key={p.name} className="flex items-center gap-2">
-                          <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: p.color }} />
-                          <span className="text-muted-foreground">{p.name}:</span>
-                          <span className="font-bold">{p.value}%</span>
-                        </div>
-                      ))}
+                       <p className="font-black uppercase mb-1">{payload[0].payload.subject}</p>
+                       {payload.map((p: any) => (
+                         <div key={p.name} className="flex items-center gap-2">
+                           <div className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: p.color }} />
+                           <span className="text-muted-foreground">{p.name}:</span>
+                           <span className="font-bold">{p.value}%</span>
+                         </div>
+                       ))}
                     </div>
                   )
                 }

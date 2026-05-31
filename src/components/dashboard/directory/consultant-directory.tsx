@@ -31,6 +31,8 @@ import { useFirestore, usePaginatedCollection } from "@/firebase"
 import { collection, query, where } from "firebase/firestore"
 import { motion, AnimatePresence } from "framer-motion"
 import { type Consultant } from "./admin-directory"
+import { COUNTRIES, formatCountryDisplay } from "@/lib/countries"
+
 
 export function ConsultantDirectory() {
   const db = useFirestore()
@@ -39,7 +41,7 @@ export function ConsultantDirectory() {
   
   const consultantsQuery = useMemo(() => {
     let q = query(collection(db, "consultantProfiles"), where("status", "==", "verified"));
-    if (filters.country) q = query(q, where('country', '==', filters.country));
+    if (filters.country && filters.country !== 'all') q = query(q, where('country', '==', filters.country));
     if (filters.sector) q = query(q, where('sector', '==', filters.sector));
     if (filters.language) q = query(q, where('language', '==', filters.language));
     return q;
@@ -119,11 +121,12 @@ export function ConsultantDirectory() {
                 <Select onValueChange={(v) => setFilters(prev => ({...prev, country: v}))}>
                   <SelectTrigger className="h-9"><SelectValue placeholder="All Countries" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="uk">United Kingdom</SelectItem>
-                    <SelectItem value="pt">Portugal</SelectItem>
-                    <SelectItem value="ng">Nigeria</SelectItem>
-                    <SelectItem value="ee">Estonia</SelectItem>
-                    <SelectItem value="es">Spain</SelectItem>
+                    <SelectItem value="all">All Countries</SelectItem>
+                    {COUNTRIES.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -195,7 +198,7 @@ export function ConsultantDirectory() {
                 <Badge variant="secondary" className="bg-muted/50 font-normal text-[11px] px-2">{consultant.sector || "General"}</Badge>
                 <div className="flex items-center gap-1.5 px-2 bg-muted/30 rounded-full border border-border/40 text-[11px] font-medium text-muted-foreground">
                     <Globe className="h-3 w-3" />
-                    {consultant.country || "Global"}
+                    {consultant.country ? formatCountryDisplay(consultant.country) : "Global"}
                 </div>
                 <div className="flex items-center gap-1.5 px-2 bg-muted/30 rounded-full border border-border/40 text-[11px] font-medium text-muted-foreground">
                     <Briefcase className="h-3 w-3" />

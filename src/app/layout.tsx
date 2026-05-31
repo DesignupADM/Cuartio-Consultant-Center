@@ -20,6 +20,9 @@ const outfit = Outfit({
 export const metadata: Metadata = {
   title: 'CIF Consultant Management',
   description: 'Curatio International Foundation - Consultant Management Portal.',
+  icons: {
+    icon: '/Small_Logo_White.svg',
+  }
 };
 
 import { TooltipProvider } from "@/components/ui/tooltip";

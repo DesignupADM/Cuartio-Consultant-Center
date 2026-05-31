@@ -37,6 +37,7 @@ export async function getUserProfile(db: Firestore, uid: string): Promise<UserPr
     return {
       uid,
       role: "admin",
+      ...adminDocSnap.data()
     };
   }
 

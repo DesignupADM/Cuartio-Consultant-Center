@@ -187,7 +187,7 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
       const loadedConsultants = await Promise.all(consultantPromises)
 
       const result = await matchConsultants({
-        opportunityDescription: opportunity.description,
+        opportunityDescription: opportunity.description || "",
         consultants: loadedConsultants
       })
       setAiMatches(result)

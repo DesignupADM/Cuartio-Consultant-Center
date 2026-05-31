@@ -35,7 +35,7 @@ export function ConsultantOpportunities() {
   const filteredOpportunities = useMemo(() => {
     return (opportunities || []).filter(opp => 
       opp.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-      opp.description.toLowerCase().includes(searchQuery.toLowerCase())
+      (opp.description || "").toLowerCase().includes(searchQuery.toLowerCase())
     )
   }, [opportunities, searchQuery])
 

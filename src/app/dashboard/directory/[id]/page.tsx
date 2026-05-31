@@ -30,6 +30,9 @@ import { useFirestore, useCollection } from "@/firebase"
 import { doc, getDoc, collection, query, orderBy } from "firebase/firestore"
 import type { Consultant } from "@/components/dashboard/directory/admin-directory"
 import { PageLoadingState, StatePanel } from "@/components/dashboard-feedback"
+import { formatCountryDisplay } from "@/lib/countries"
+
+
 
 export default function ConsultantProfilePage({
   params,
@@ -42,6 +45,12 @@ export default function ConsultantProfilePage({
 
   const [consultant, setConsultant] = useState<Consultant | null>(null)
   const [loading, setLoading] = useState(true)
+  const [prevId, setPrevId] = useState(id)
+
+  if (id !== prevId) {
+    setPrevId(id)
+    setLoading(true)
+  }
 
   // Fetch registration questions for custom answers
   const questionsQuery = useMemo(
@@ -57,10 +66,11 @@ export default function ConsultantProfilePage({
   })
 
   useEffect(() => {
-    setLoading(true)
+    let active = true
     const ref = doc(db, "consultantProfiles", id)
     getDoc(ref)
       .then((snap) => {
+        if (!active) return
         if (snap.exists()) {
           setConsultant({ id: snap.id, ...snap.data() } as Consultant)
         } else {
@@ -68,10 +78,17 @@ export default function ConsultantProfilePage({
         }
       })
       .catch((err) => {
+        if (!active) return
         console.error("Failed to load consultant", err)
         setConsultant(null)
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
   }, [db, id])
 
   if (loading) {
@@ -93,7 +110,7 @@ export default function ConsultantProfilePage({
     )
   }
 
-  const statusConfig = {
+  const statusConfig: Record<string, { label: string; color: string }> = {
     verified: { label: "Verified", color: "bg-emerald-500/10 text-emerald-700 border-emerald-200" },
     pending: { label: "Pending Review", color: "bg-amber-500/10 text-amber-700 border-amber-200" },
     rejected: { label: "Rejected", color: "bg-rose-500/10 text-rose-700 border-rose-200" },
@@ -146,10 +163,18 @@ export default function ConsultantProfilePage({
         </div>
 
         {/* Hero Card */}
-        <Card className="border-none ring-1 ring-border shadow-xs overflow-hidden">
-          <div className="h-24 bg-gradient-to-r from-primary/10 via-primary/5 to-accent/10" />
-          <CardContent className="px-8 pb-8 -mt-10">
-            <div className="flex flex-col sm:flex-row items-start gap-6">
+        <Card className="border-none ring-1 ring-border shadow-xs overflow-hidden p-0 py-0 gap-0">
+          <div className="relative h-32 w-full">
+            <Image 
+              src="/consultant-background.png" 
+              alt="Consultant Background" 
+              fill
+              priority
+              className="object-cover" 
+            />
+          </div>
+          <CardContent className="px-8 pb-8 -mt-10 z-10 relative">
+            <div className="flex flex-col sm:flex-row items-center gap-6">
               {/* Avatar */}
               <div className="h-20 w-20 rounded-2xl bg-primary/10 flex items-center justify-center text-primary overflow-hidden border-4 border-background ring-2 ring-primary/20 shadow-lg shrink-0">
                 {consultant.avatarUrl ? (
@@ -165,8 +190,8 @@ export default function ConsultantProfilePage({
                 )}
               </div>
 
-              {/* Name & Meta */}
-              <div className="flex-1 pt-2 sm:pt-3">
+              {/* Name & Meta Box */}
+              <div className="bg-background/60 backdrop-blur-md p-5 rounded-2xl border border-border/50 shadow-lg w-fit max-w-2xl shrink">
                 <div className="flex flex-wrap items-center gap-2 mb-1">
                   <h2 className="text-2xl font-bold text-foreground">
                     {consultant.firstName} {consultant.lastName}
@@ -175,10 +200,10 @@ export default function ConsultantProfilePage({
                     {status.label}
                   </Badge>
                 </div>
-                <p className="text-muted-foreground font-medium">{consultant.profession}</p>
-                <div className="flex flex-wrap gap-4 mt-3 text-sm text-muted-foreground">
+                <p className="text-muted-foreground font-medium text-sm mb-3">{consultant.profession}</p>
+                <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1.5">
-                    <Globe className="h-3.5 w-3.5" /> {consultant.country}
+                    <Globe className="h-3.5 w-3.5" /> {formatCountryDisplay(consultant.country)}
                   </span>
                   <span className="flex items-center gap-1.5">
                     <Briefcase className="h-3.5 w-3.5" /> {consultant.years} years experience
@@ -231,7 +256,7 @@ export default function ConsultantProfilePage({
                   <Globe className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">Country</p>
-                    <p className="font-medium uppercase">{consultant.country || "—"}</p>
+                    <p className="font-medium uppercase">{consultant.country ? formatCountryDisplay(consultant.country) : "—"}</p>
                   </div>
                 </div>
                 <Separator />
@@ -301,30 +326,53 @@ export default function ConsultantProfilePage({
 
             {/* AI Insights */}
             {consultant.aiInsight && (
-              <Card className="border-none bg-primary/5 ring-1 ring-primary/20 shadow-xs overflow-hidden">
+              <Card className="border-none bg-gradient-to-br from-primary/[0.04] to-accent/[0.04] ring-1 ring-primary/10 shadow-xs overflow-hidden">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-sm font-black uppercase tracking-widest text-primary flex items-center gap-2">
-                    <Sparkles className="h-4 w-4" /> AI Profile Analysis
-                  </CardTitle>
+                  <div className="flex items-center gap-3">
+                    <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                      <Sparkles className="h-4 w-4" />
+                    </div>
+                    <CardTitle className="text-base font-bold text-primary font-headline">
+                      AI Profile Analysis
+                    </CardTitle>
+                  </div>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  <p className="text-sm leading-relaxed text-foreground/80">{consultant.aiInsight.summary}</p>
-                  <div className="grid sm:grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Top Skills</p>
-                      <div className="flex flex-wrap gap-1.5">
+                  <p className="text-sm leading-relaxed text-foreground/90 bg-background/50 border border-border/40 p-4 rounded-xl shadow-2xs font-medium">
+                    {consultant.aiInsight.summary}
+                  </p>
+
+                  <div className="grid md:grid-cols-5 gap-8">
+                    <div className="md:col-span-3 space-y-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                        Top Skills
+                      </p>
+                      <div className="flex flex-wrap gap-2">
                         {consultant.aiInsight.skills.map((s: string, i: number) => (
-                          <Badge key={i} variant="outline" className="text-[10px] bg-background border-primary/20 text-foreground">
+                          <Badge 
+                            key={i} 
+                            variant="secondary" 
+                            className="text-xs px-2.5 py-1 bg-primary/[0.04] text-primary border border-primary/10 hover:scale-105 hover:bg-primary/10 hover:border-primary/30 transition-all duration-200 font-medium rounded-lg cursor-default"
+                          >
                             {s}
                           </Badge>
                         ))}
                       </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2">Qualifications</p>
-                      <ul className="text-[13px] space-y-1 list-disc list-inside text-foreground/80">
+
+                    <div className="md:col-span-2 space-y-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                        Qualifications
+                      </p>
+                      <ul className="space-y-3">
                         {consultant.aiInsight.qualifications.map((q: string, i: number) => (
-                          <li key={i}>{q}</li>
+                          <li 
+                            key={i} 
+                            className="flex items-start gap-2.5 text-sm text-foreground/80 bg-background/40 p-3 rounded-lg border border-border/40 shadow-3xs"
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-primary mt-2 shrink-0" />
+                            <span>{q}</span>
+                          </li>
                         ))}
                       </ul>
                     </div>

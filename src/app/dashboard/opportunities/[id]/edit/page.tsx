@@ -180,35 +180,33 @@ export default function EditOpportunityPage({ params }: { params: Promise<{ id: 
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 max-w-5xl mx-auto pb-12">
-      <div className="flex items-center gap-4 mb-8">
-        <Button variant="outline" size="icon" asChild className="shrink-0 h-10 w-10">
-          <Link href={`/dashboard/opportunities/${id}`}>
-            <ChevronLeft className="h-4 w-4" />
-          </Link>
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Edit Opportunity</h1>
-          <p className="text-muted-foreground mt-1 text-sm font-medium">Update the details and content of this project.</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+        <div className="flex items-center gap-4">
+          <Button variant="outline" size="icon" asChild className="shrink-0 h-10 w-10">
+            <Link href={`/dashboard/opportunities/${id}`}>
+              <ChevronLeft className="h-4 w-4" />
+            </Link>
+          </Button>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Edit Opportunity</h1>
+            <p className="text-muted-foreground mt-1 text-sm font-medium">Update the details and content of this project.</p>
+          </div>
         </div>
+        <Button 
+          type="button" 
+          variant="outline" 
+          size="sm"
+          className="bg-accent/10 border-accent/20 text-accent hover:bg-accent hover:text-white transition-all font-black text-[10px] uppercase tracking-widest self-start md:self-auto h-9"
+          onClick={handleAIGenerate}
+          disabled={isGenerating || !formValues.title}
+        >
+          {isGenerating ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <Sparkles className="h-3 w-3 mr-2" />}
+          AI Auto-Fill
+        </Button>
       </div>
 
       <div className="bg-card border border-border shadow-xs rounded-xl overflow-hidden">
         <form onSubmit={handleUpdateOpportunity} className="flex flex-col">
-          <div className="p-8 border-b border-border/50 bg-muted/30">
-            <div className="flex justify-end items-start">
-              <Button 
-                type="button" 
-                variant="outline" 
-                size="sm"
-                className="bg-accent/10 border-accent/20 text-accent hover:bg-accent hover:text-white transition-all font-black text-[10px] uppercase tracking-widest"
-                onClick={handleAIGenerate}
-                disabled={isGenerating || !formValues.title}
-              >
-                {isGenerating ? <Loader2 className="h-3 w-3 animate-spin mr-2" /> : <Sparkles className="h-3 w-3 mr-2" />}
-                AI Auto-Fill
-              </Button>
-            </div>
-          </div>
 
           <div className="p-8 space-y-12">
             <section className="space-y-6">

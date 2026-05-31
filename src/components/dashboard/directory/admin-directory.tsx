@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { 
@@ -17,6 +17,7 @@ import {
   FileText, 
   Search, 
   Download,
+  Upload,
   Filter,
   CircleCheck,
   Mail,
@@ -33,7 +34,8 @@ import {
   MessageSquare,
   Loader2,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Trash2
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { 
@@ -46,7 +48,10 @@ import {
 } from "@/components/ui/sheet"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { COUNTRIES, formatCountryDisplay, COUNTRY_CODE_MAP } from "@/lib/countries"
 import { adminCvInsightExtraction, AdminCvInsightExtractionOutput } from "@/ai/flows/admin-cv-insight-extraction"
+import { CsvImportDialog } from "./csv-import-dialog"
+
 import { useToast } from "@/hooks/use-toast"
 import { Separator } from "@/components/ui/separator"
 import { 
@@ -60,7 +65,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useFirestore, usePaginatedCollection, useCollection } from "@/firebase"
-import { collection, query, where, doc, updateDoc, writeBatch, getDocs } from "firebase/firestore"
+import { collection, query, where, doc, updateDoc, writeBatch, getDocs, serverTimestamp } from "firebase/firestore"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -95,14 +100,18 @@ export function AdminDirectory() {
   const [messageMode, setMessageMode] = useState<'custom' | 'template'>('custom')
   const [messageForm, setMessageForm] = useState({ subject: '', body: '', templateId: '' })
   const [isSendingMessage, setIsSendingMessage] = useState(false)
+  const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
+  const [refreshTrigger, setRefreshTrigger] = useState(0)
   
   const consultantsQuery = useMemo(() => {
+    // Reference refreshTrigger to force query re-evaluation on import completion
+    const _forceReload = refreshTrigger;
     let q = query(collection(db, "consultantProfiles"));
-    if (filters.country) q = query(q, where('country', '==', filters.country));
+    if (filters.country && filters.country !== 'all') q = query(q, where('country', '==', filters.country));
     if (filters.sector) q = query(q, where('sector', '==', filters.sector));
     if (filters.language) q = query(q, where('language', '==', filters.language));
     return q;
-  }, [db, filters])
+  }, [db, filters, refreshTrigger])
   const { data: consultants, loading, loadingMore, hasMore, loadMore } = usePaginatedCollection<Consultant>(consultantsQuery as any, 20)
 
   const oppFieldsQuery = useMemo(() => query(collection(db, "opportunityFields")), [db]);
@@ -115,6 +124,33 @@ export function AdminDirectory() {
   const [showQuickFilters, setShowQuickFilters] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const { toast } = useToast()
+
+  // Auto-migrate legacy country codes when the admin directory is opened
+  useEffect(() => {
+    const migrateLegacyProfiles = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "consultantProfiles"))
+        for (const docSnap of querySnapshot.docs) {
+          const data = docSnap.data()
+          const currentCountry = data.country
+          if (currentCountry) {
+            const lowerCountry = currentCountry.toLowerCase().trim()
+            const mappedName = COUNTRY_CODE_MAP[lowerCountry]
+            if (mappedName && currentCountry !== mappedName) {
+              await updateDoc(doc(db, "consultantProfiles", docSnap.id), {
+                country: mappedName,
+                updatedAt: serverTimestamp()
+              })
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Auto-migration of legacy country codes failed:", err)
+      }
+    }
+    
+    migrateLegacyProfiles()
+  }, [db])
 
   const [visibleColumns, setVisibleColumns] = useState({
     phone: false,
@@ -259,6 +295,35 @@ export function AdminDirectory() {
     }
   }
 
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`Are you sure you want to permanently delete the ${selectedIds.length} selected consultant profiles? This action cannot be undone.`)) {
+      return;
+    }
+    
+    const batch = writeBatch(db);
+    selectedIds.forEach(id => {
+      batch.delete(doc(db, "consultantProfiles", id));
+    });
+    
+    try {
+      await batch.commit();
+      toast({
+        title: "Bulk Delete Successful",
+        description: `Successfully deleted ${selectedIds.length} consultant profiles.`
+      });
+      setSelectedIds([]);
+      setRefreshTrigger(prev => prev + 1);
+    } catch (err) {
+      console.error("Bulk delete failed:", err);
+      toast({
+        variant: "destructive",
+        title: "Bulk Delete Failed",
+        description: "An error occurred while deleting the profiles."
+      });
+    }
+  }
+
   const handleVerifyProfile = async (id: string) => {
     const userRef = doc(db, "consultantProfiles", id)
     try {
@@ -307,6 +372,10 @@ export function AdminDirectory() {
                   <CircleCheck className="mr-2 h-4 w-4" /> Mark as Verified
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-destructive" onClick={handleBulkDelete}>
+                  <Trash2 className="mr-2 h-4 w-4" /> Delete Profiles
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-destructive" onClick={() => setSelectedIds([])}>
                   Clear Selection
                 </DropdownMenuItem>
@@ -317,6 +386,11 @@ export function AdminDirectory() {
           <Button variant="outline" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" />
             Export CSV
+          </Button>
+
+          <Button variant="outline" onClick={() => setIsImportDialogOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />
+            Import CSV
           </Button>
           
           <DropdownMenu>
@@ -465,11 +539,12 @@ export function AdminDirectory() {
                 <Select onValueChange={(v) => setFilters(prev => ({...prev, country: v}))}>
                   <SelectTrigger className="h-9"><SelectValue placeholder="All Countries" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="uk">United Kingdom</SelectItem>
-                    <SelectItem value="pt">Portugal</SelectItem>
-                    <SelectItem value="ng">Nigeria</SelectItem>
-                    <SelectItem value="ee">Estonia</SelectItem>
-                    <SelectItem value="es">Spain</SelectItem>
+                    <SelectItem value="all">All Countries</SelectItem>
+                    {COUNTRIES.map((c) => (
+                      <SelectItem key={c.value} value={c.value}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -588,7 +663,7 @@ export function AdminDirectory() {
                 <TableCell>
                   <div className="flex items-center gap-2">
                       <Globe className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-[13px] font-medium">{consultant.country}</span>
+                      <span className="text-[13px] font-medium">{consultant.country ? formatCountryDisplay(consultant.country) : ""}</span>
                   </div>
                 </TableCell>
                 {visibleColumns.years && <TableCell className="text-center font-bold text-[13px] text-primary/80 leading-none">{consultant.years}y</TableCell>}
@@ -683,7 +758,7 @@ export function AdminDirectory() {
                   </div>
                   <div className="space-y-1">
                     <p className="text-muted-foreground flex items-center gap-2"><Globe className="h-3.5 w-3.5" /> Country</p>
-                    <p className="font-medium">{activeConsultant.country}</p>
+                    <p className="font-medium">{activeConsultant.country ? formatCountryDisplay(activeConsultant.country) : "—"}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-muted-foreground flex items-center gap-2"><Briefcase className="h-3.5 w-3.5" /> Experience</p>
@@ -906,6 +981,12 @@ export function AdminDirectory() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CsvImportDialog 
+        open={isImportDialogOpen} 
+        onOpenChange={setIsImportDialogOpen} 
+        onImportComplete={() => setRefreshTrigger(prev => prev + 1)} 
+      />
     </div>
   )
 }

@@ -19,6 +19,11 @@ service firebase.storage {
       allow write: if isOwner(userId);
     }
     
+    match /admins/{userId}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isOwner(userId) && (request.auth != null && firestore.exists(/databases/(default)/documents/adminRoles/$(request.auth.uid)));
+    }
+    
     match /opportunities/{allPaths=**} {
       allow read: if true;
       allow write: if isSignedIn();

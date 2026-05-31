@@ -28,6 +28,8 @@ import { createUserWithEmailAndPassword } from "firebase/auth"
 import { uploadFile } from "@/firebase/storage/upload"
 import { createUserProfile } from "@/firebase/firestore/users"
 import { applyToOpportunity } from "@/firebase/firestore/opportunities"
+import { COUNTRIES } from "@/lib/countries"
+
 
 export default function ApplyPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -205,13 +207,14 @@ export default function ApplyPage({ params }: { params: Promise<{ id: string }> 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="country">Country of Residence</Label>
-                      <Select required onValueChange={(v) => setFormData({...formData, country: v})}>
+                      <Select required value={formData.country} onValueChange={(v) => setFormData({...formData, country: v})}>
                         <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="uk">United Kingdom</SelectItem>
-                          <SelectItem value="us">United States</SelectItem>
-                          <SelectItem value="ch">Switzerland</SelectItem>
-                          <SelectItem value="ke">Kenya</SelectItem>
+                          {COUNTRIES.map((c) => (
+                            <SelectItem key={c.value} value={c.value}>
+                              {c.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </div>
