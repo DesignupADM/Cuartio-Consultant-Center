@@ -46,7 +46,6 @@ import {
   HelpCircle,
   Loader2
 } from "lucide-react"
-import { motion, AnimatePresence } from "framer-motion"
 
 // --- Custom CSV Parser ---
 function parseCSV(text: string): string[][] {
@@ -597,16 +596,13 @@ export function CsvImportDialog({ open, onOpenChange, onImportComplete }: CsvImp
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto py-6 min-h-0">
-          <AnimatePresence mode="wait">
+          <div>
             
             {/* STEP 1: UPLOAD */}
             {step === 'upload' && (
-              <motion.div
+              <div
                 key="upload-step"
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                className="space-y-6 flex flex-col items-center justify-center py-8"
+                className="space-y-6 flex flex-col items-center justify-center py-8 animate-in fade-in slide-in-from-bottom-2"
               >
                 <div 
                   className={`w-full max-w-xl border-2 border-dashed rounded-2xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-300 ${
@@ -649,17 +645,14 @@ export function CsvImportDialog({ open, onOpenChange, onImportComplete }: CsvImp
                     </p>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             )}
 
             {/* STEP 2: MAPPING */}
             {step === 'mapping' && csvData && (
-              <motion.div
+              <div
                 key="mapping-step"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                className="space-y-6"
+                className="space-y-6 animate-in fade-in slide-in-from-right-2"
               >
                 <div className="bg-amber-500/10 border border-amber-200 text-amber-800 text-sm p-4 rounded-xl flex gap-3 items-start">
                   <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
@@ -811,17 +804,14 @@ export function CsvImportDialog({ open, onOpenChange, onImportComplete }: CsvImp
                     </div>
                   </div>
                 )}
-              </motion.div>
+              </div>
             )}
 
             {/* STEP 3: PREVIEW */}
             {step === 'preview' && csvData && (
-              <motion.div
+              <div
                 key="preview-step"
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                className="space-y-6"
+                className="space-y-6 animate-in fade-in zoom-in-95"
               >
                 <div>
                   <h4 className="font-bold text-base mb-2">Mapped Imports Sample Preview</h4>
@@ -868,16 +858,14 @@ export function CsvImportDialog({ open, onOpenChange, onImportComplete }: CsvImp
                     </Table>
                   </div>
                 </div>
-              </motion.div>
+              </div>
             )}
 
             {/* STEP 4: IMPORTING */}
             {step === 'importing' && (
-              <motion.div
+              <div
                 key="importing-step"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="py-12 flex flex-col items-center justify-center space-y-6"
+                className="py-12 flex flex-col items-center justify-center space-y-6 animate-in fade-in"
               >
                 <div className="relative flex items-center justify-center">
                   <div className="h-16 w-16 rounded-full border-4 border-primary/20 border-t-primary animate-spin shrink-0" />
@@ -893,25 +881,20 @@ export function CsvImportDialog({ open, onOpenChange, onImportComplete }: CsvImp
                   <Progress value={progress} className="h-2 w-full" />
                   <p className="text-xs text-muted-foreground text-right font-mono">{progress}% Complete</p>
                 </div>
-              </motion.div>
+              </div>
             )}
 
             {/* STEP 5: COMPLETE */}
             {step === 'complete' && (
-              <motion.div
+              <div
                 key="complete-step"
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="py-8 flex flex-col items-center justify-center text-center space-y-6"
+                className="py-8 flex flex-col items-center justify-center text-center space-y-6 animate-in fade-in zoom-in-95"
               >
-                <motion.div 
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{ type: "spring", stiffness: 200, damping: 15 }}
-                  className="h-16 w-16 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center shadow-xs"
+                <div 
+                  className="h-16 w-16 rounded-full bg-emerald-500/10 text-emerald-600 flex items-center justify-center shadow-xs animate-in zoom-in-50 duration-500"
                 >
                   <CheckCircle2 className="h-10 w-10" />
-                </motion.div>
+                </div>
 
                 <div className="space-y-1.5">
                   <h3 className="text-2xl font-bold text-foreground">Import Complete!</h3>
@@ -953,10 +936,10 @@ export function CsvImportDialog({ open, onOpenChange, onImportComplete }: CsvImp
                     </ul>
                   </div>
                 )}
-              </motion.div>
+              </div>
             )}
 
-          </AnimatePresence>
+          </div>
         </div>
 
         <DialogFooter className="border-t pt-4 gap-2 flex justify-between sm:justify-between">

@@ -5,8 +5,6 @@ import * as React from "react"
 import Image from "next/image"
 import { 
   LogOut, 
-  Search, 
-  User as UserIcon,
   Bell,
   Settings,
   Loader2
@@ -26,7 +24,6 @@ import {
 import { NavMain } from "@/components/nav-main"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import Link from "next/link"
 import { useAuth } from "@/firebase"
 import { useUser } from "@/firebase/auth/use-user"
@@ -137,14 +134,7 @@ function DashboardShell({
           <SidebarTrigger className="-ml-1 text-muted-foreground hover:text-primary transition-colors" />
           <Separator orientation="vertical" className="h-4 mx-2" />
           <div className="flex-1 max-w-md hidden md:block">
-            <div className="relative group">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-              <Input
-                type="search"
-                placeholder="Global search database..."
-                className="w-full bg-muted/30 pl-10 h-9 rounded-full border-none ring-1 ring-border focus-visible:ring-primary focus-visible:bg-white transition-all text-xs"
-              />
-            </div>
+            {/* Global Search placeholder removed to trim dashboard shell weight. */}
           </div>
           <div className="ml-auto flex items-center gap-3">
              <ModeToggle />

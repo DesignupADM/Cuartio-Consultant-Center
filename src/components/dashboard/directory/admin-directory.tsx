@@ -66,10 +66,11 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { useFirestore, usePaginatedCollection, useCollection } from "@/firebase"
 import { collection, query, where, doc, updateDoc, writeBatch, getDocs, serverTimestamp, limit, startAfter } from "firebase/firestore"
+import { getFunctions, httpsCallable } from "firebase/functions"
+import { useFirebaseApp } from "@/firebase"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { motion, AnimatePresence } from "framer-motion"
 import { EmptyState } from "@/components/ui/empty-state"
 
 export type Consultant = {
@@ -94,6 +95,7 @@ export type Consultant = {
 
 export function AdminDirectory() {
   const db = useFirestore()
+  const app = useFirebaseApp()
 
   const [filters, setFilters] = useState({ country: '', sector: '', language: '', minYears: '' })
   const [isMessageDialogOpen, setIsMessageDialogOpen] = useState(false)
@@ -110,6 +112,7 @@ export function AdminDirectory() {
     if (filters.country && filters.country !== 'all') q = query(q, where('country', '==', filters.country));
     if (filters.sector) q = query(q, where('sector', '==', filters.sector));
     if (filters.language) q = query(q, where('language', '==', filters.language));
+    if (filters.minYears) q = query(q, where('years', '>=', Number(filters.minYears)));
     return q;
   }, [db, filters, refreshTrigger])
   const { data: consultants, loading, loadingMore, hasMore, loadMore } = usePaginatedCollection<Consultant>(consultantsQuery as any, 20)
@@ -121,30 +124,45 @@ export function AdminDirectory() {
     
     setIsMigrating(true)
     try {
-      const querySnapshot = await getDocs(collection(db, "consultantProfiles"))
       let migratedCount = 0;
       let batch = writeBatch(db);
+      let lastDoc = null;
+      let hasMore = true;
       
-      for (const docSnap of querySnapshot.docs) {
-        const data = docSnap.data()
-        const currentCountry = data.country
-        if (currentCountry) {
-          const lowerCountry = currentCountry.toLowerCase().trim()
-          const mappedName = COUNTRY_CODE_MAP[lowerCountry]
-          if (mappedName && currentCountry !== mappedName) {
-            batch.update(doc(db, "consultantProfiles", docSnap.id), {
-              country: mappedName,
-              updatedAt: serverTimestamp()
-            });
-            migratedCount++;
-            
-            if (migratedCount % 400 === 0) {
-              await batch.commit();
-              batch = writeBatch(db);
+      while (hasMore) {
+        let q = query(collection(db, "consultantProfiles"), limit(1000));
+        if (lastDoc) {
+          q = query(collection(db, "consultantProfiles"), startAfter(lastDoc), limit(1000));
+        }
+        const snapshot = await getDocs(q);
+        if (snapshot.empty) {
+          hasMore = false;
+          break;
+        }
+
+        for (const docSnap of snapshot.docs) {
+          const data = docSnap.data()
+          const currentCountry = data.country
+          if (currentCountry) {
+            const lowerCountry = currentCountry.toLowerCase().trim()
+            const mappedName = COUNTRY_CODE_MAP[lowerCountry]
+            if (mappedName && currentCountry !== mappedName) {
+              batch.update(doc(db, "consultantProfiles", docSnap.id), {
+                country: mappedName,
+                updatedAt: serverTimestamp()
+              });
+              migratedCount++;
+              
+              if (migratedCount % 400 === 0) {
+                await batch.commit();
+                batch = writeBatch(db);
+              }
             }
           }
         }
+        lastDoc = snapshot.docs[snapshot.docs.length - 1];
       }
+
       if (migratedCount % 400 !== 0 && migratedCount > 0) {
         await batch.commit();
       }
@@ -208,47 +226,25 @@ export function AdminDirectory() {
 
   const handleExport = async () => {
     try {
-      toast({ title: "Generating Export", description: "Fetching complete database in chunks..." })
+      toast({ title: "Generating Export", description: "Requesting export from server..." })
       
-      let allConsultants: Consultant[] = [];
-      let lastDoc = null;
-      let hasMore = true;
-      
-      while (hasMore) {
-        let q = query(collection(db, "consultantProfiles"), limit(1000));
-        if (lastDoc) {
-          q = query(collection(db, "consultantProfiles"), startAfter(lastDoc), limit(1000));
-        }
-        
-        const snapshot = await getDocs(q);
-        if (snapshot.empty) {
-          hasMore = false;
-          break;
-        }
-        
-        allConsultants.push(...snapshot.docs.map(doc => doc.data() as Consultant));
-        lastDoc = snapshot.docs[snapshot.docs.length - 1];
-      }
-      
-      const csvContent = "data:text/csv;charset=utf-8," 
-        + ["Name,Last Name,Email,Country,Profession,Years Experience,Sector,Status"].join(",") + "\n"
-        + allConsultants.map(c => `${c.firstName},${c.lastName},${c.email},${c.country},${c.profession},${c.years},${c.sector},${c.status}`).join("\n");
+      const functions = getFunctions(app);
+      const exportConsultants = httpsCallable(functions, 'exportConsultants');
+      const result = await exportConsultants();
+      const csvContent = "data:text/csv;charset=utf-8," + (result.data as any).csv;
       
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `consultants_export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute("download", `connectflow_consultants_${new Date().toISOString().split('T')[0]}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-
-      toast({
-        title: "Export Successful",
-        description: `Exported ${allConsultants.length} total consultant profiles.`
-      })
+      
+      toast({ title: "Export Complete", description: "Your download should begin shortly." })
     } catch (err) {
-      console.error("Export Failed", err);
-      toast({ title: "Export Failed", variant: "destructive" })
+      console.error("Export failed:", err)
+      toast({ variant: "destructive", title: "Export Failed", description: "An error occurred generating the export." })
     }
   }
 

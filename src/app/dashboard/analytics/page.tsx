@@ -3,15 +3,16 @@
 import * as React from "react"
 import { PageLoadingState } from "@/components/dashboard-feedback"
 import { DashboardLayout } from "@/components/dashboard-layout"
-import { 
-  PipelineFunnel, 
-  GeographicalReach, 
-  SkillsMatrix, 
-  EfficiencyMetrics 
-} from "@/components/analytics-charts"
+import dynamic from 'next/dynamic'
+
+const PipelineFunnel = dynamic(() => import('@/components/analytics-charts').then(mod => mod.PipelineFunnel), { ssr: false, loading: () => <div className="h-[250px] w-full animate-pulse bg-muted/20 rounded-xl" /> })
+const GeographicalReach = dynamic(() => import('@/components/analytics-charts').then(mod => mod.GeographicalReach), { ssr: false, loading: () => <div className="h-[250px] w-full animate-pulse bg-muted/20 rounded-xl" /> })
+const SkillsMatrix = dynamic(() => import('@/components/analytics-charts').then(mod => mod.SkillsMatrix), { ssr: false, loading: () => <div className="h-[280px] w-full animate-pulse bg-muted/20 rounded-xl" /> })
+const EfficiencyMetrics = dynamic(() => import('@/components/analytics-charts').then(mod => mod.EfficiencyMetrics), { ssr: false })
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { useFirestore, useCollection } from "@/firebase"
-import { collection, collectionGroup, getDocs, query, limit, getCountFromServer, where } from "firebase/firestore"
+import { collection, collectionGroup, getDocs, query, limit, where, doc } from "firebase/firestore"
+import { useDoc } from "@/firebase/firestore/use-doc"
 import { 
   Target, 
   Zap,
@@ -109,51 +110,36 @@ export default function AnalyticsPage() {
     })
   }, [db])
 
+  const statsDocRef = React.useMemo(() => doc(db, "_system/dashboard_stats"), [db])
+  const { data: statsData } = useDoc(statsDocRef)
+
   React.useEffect(() => {
-    async function fetchCounts() {
-      try {
-        const now = new Date()
-        const currentWindowStart = new Date(now)
-        currentWindowStart.setDate(now.getDate() - 30)
-
-        const safeCount = async (q: any) => getCountFromServer(q).catch(() => ({ data: () => ({ count: 0 }) }))
-
-        const [
-          totalConsultantsSnap,
-          openRolesSnap,
-          totalApplicationsSnap,
-          appliedSnap,
-          shortlistedSnap,
-          declinedSnap,
-          recentConsultantsSnap
-        ] = await Promise.all([
-          safeCount(collection(db, "consultantProfiles")),
-          safeCount(query(collection(db, "opportunities"), where("status", "==", "open"))),
-          safeCount(collectionGroup(db, "applicants")),
-          safeCount(query(collectionGroup(db, "applicants"), where("status", "==", "applied"))),
-          safeCount(query(collectionGroup(db, "applicants"), where("status", "==", "accepted"))),
-          safeCount(query(collectionGroup(db, "applicants"), where("status", "==", "declined"))),
-          safeCount(query(collection(db, "consultantProfiles"), where("createdAt", ">=", currentWindowStart)))
-        ])
-        
-        setCounts({
-          totalConsultants: totalConsultantsSnap.data().count,
-          openRoles: openRolesSnap.data().count,
-          totalApplications: totalApplicationsSnap.data().count,
-          applied: appliedSnap.data().count,
-          shortlisted: shortlistedSnap.data().count,
-          declined: declinedSnap.data().count,
-          recentConsultants: recentConsultantsSnap.data().count,
-          previousConsultants: Math.floor(recentConsultantsSnap.data().count * 0.8), // Mock previous for demo
-        })
-      } catch (err) {
-        console.error("Error fetching analytics counts", err)
-      } finally {
-        setCountsLoading(false)
-      }
+    if (statsData) {
+      setCounts({
+        totalConsultants: statsData.totalConsultants || 0,
+        openRoles: statsData.openOpportunities || 0,
+        totalApplications: statsData.totalApplications || 0,
+        applied: statsData.applied || 0,
+        shortlisted: statsData.shortlisted || 0,
+        declined: statsData.declined || 0,
+        recentConsultants: statsData.recentConsultants || 0,
+        previousConsultants: statsData.previousConsultants || 0,
+      })
+      setCountsLoading(false)
     }
-    fetchCounts()
-  }, [db])
+  }, [statsData])
+
+  const netExpansion = React.useMemo(() => {
+    if (!statsData) return { absolute: 0, trend: 'up' as const }
+    const recent = statsData.recentConsultants || 0
+    const previous = statsData.previousConsultants || 0
+    
+    const diff = recent - previous
+    return {
+      absolute: Math.abs(diff),
+      trend: diff >= 0 ? 'up' as const : 'down' as const
+    }
+  }, [statsData])
 
   const analytics = React.useMemo(() => {
     const consultantList = consultants || []

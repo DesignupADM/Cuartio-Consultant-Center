@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { useFirestore, useCollection } from "@/firebase"
 import { usePaginatedCollection } from "@/firebase/firestore/use-paginated-collection"
-import { collection, query, where, orderBy, getCountFromServer, limit } from "firebase/firestore"
+import { collection, query, limit, doc } from "firebase/firestore"
+import { useDoc } from "@/firebase/firestore/use-doc"
 import { 
   Users, 
   Briefcase, 
@@ -17,15 +18,15 @@ import {
   TrendingUp
 } from "lucide-react"
 import Link from "next/link"
-import { 
-  XAxis, 
-  YAxis, 
-  Cell, 
-  PieChart, 
-  Pie,
-  AreaChart,
-  Area
-} from "recharts"
+import dynamic from "next/dynamic"
+
+const AreaChart = dynamic(() => import("recharts").then((mod) => mod.AreaChart), { ssr: false, loading: () => <div className="h-full w-full animate-pulse bg-muted/20" /> })
+const Area = dynamic(() => import("recharts").then((mod) => mod.Area), { ssr: false })
+const XAxis = dynamic(() => import("recharts").then((mod) => mod.XAxis), { ssr: false })
+const YAxis = dynamic(() => import("recharts").then((mod) => mod.YAxis), { ssr: false })
+const PieChart = dynamic(() => import("recharts").then((mod) => mod.PieChart), { ssr: false, loading: () => <div className="h-full w-full animate-pulse bg-muted/20" /> })
+const Pie = dynamic(() => import("recharts").then((mod) => mod.Pie), { ssr: false })
+const Cell = dynamic(() => import("recharts").then((mod) => mod.Cell), { ssr: false })
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
@@ -68,33 +69,12 @@ function toDate(value: { toDate?: () => Date } | string | null | undefined): Dat
 export function AdminOverview() {
   const db = useFirestore()
 
-  // Use getCountFromServer to avoid downloading entire databases
-  const [totalConsultants, setTotalConsultants] = useState<number | null>(null)
-  const [pendingConsultants, setPendingConsultants] = useState<number | null>(null)
-  const [openOpportunitiesCount, setOpenOpportunitiesCount] = useState<number | null>(null)
+  const statsDocRef = useMemo(() => doc(db, "_system/dashboard_stats"), [db])
+  const { data: statsData } = useDoc(statsDocRef)
 
-  useEffect(() => {
-    async function fetchCounts() {
-      try {
-        const consultantsColl = collection(db, "consultantProfiles")
-        const pendingQuery = query(consultantsColl, where("status", "==", "pending"))
-        const openOppQuery = query(collection(db, "opportunities"), where("status", "==", "open"))
-        
-        const [totalSnap, pendingSnap, oppSnap] = await Promise.all([
-          getCountFromServer(consultantsColl),
-          getCountFromServer(pendingQuery),
-          getCountFromServer(openOppQuery)
-        ])
-        
-        setTotalConsultants(totalSnap.data().count)
-        setPendingConsultants(pendingSnap.data().count)
-        setOpenOpportunitiesCount(oppSnap.data().count)
-      } catch (err) {
-        console.error("Failed to fetch aggregate counts", err)
-      }
-    }
-    fetchCounts()
-  }, [db])
+  const totalConsultants = statsData?.totalConsultants ?? null
+  const pendingConsultants = statsData?.pendingConsultants ?? null
+  const openOpportunitiesCount = statsData?.openOpportunities ?? null
 
   // Fetch only the latest 100 consultants for charts and recent feed
   // Bypassing orderBy on Firestore to avoid index requirements, and sorting client-side

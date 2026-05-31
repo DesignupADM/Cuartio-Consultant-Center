@@ -29,7 +29,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator"
 import { useFirestore, usePaginatedCollection } from "@/firebase"
 import { collection, query, where } from "firebase/firestore"
-import { motion, AnimatePresence } from "framer-motion"
 import { type Consultant } from "./admin-directory"
 import { COUNTRIES, formatCountryDisplay } from "@/lib/countries"
 
@@ -58,10 +57,7 @@ export function ConsultantDirectory() {
     )
   }, [consultants, searchQuery])
 
-  const itemVariants = {
-    hidden: { opacity: 0, y: 10 },
-    show: { opacity: 1, y: 0 }
-  }
+
 
   return (
     <div className="space-y-6">
@@ -160,17 +156,12 @@ export function ConsultantDirectory() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <AnimatePresence mode="popLayout">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredConsultants.map((consultant, index) => (
-            <motion.div 
+            <div 
               key={consultant.id} 
-              variants={itemVariants}
-              initial="hidden"
-              animate="show"
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.2, delay: index * 0.03 }}
-              className="bg-card p-6 rounded-2xl border border-border/60 shadow-xs hover:shadow-md transition-all flex flex-col gap-4"
+              className="bg-card p-6 rounded-2xl border border-border/60 shadow-xs hover:shadow-md transition-all duration-300 flex flex-col gap-4 animate-in fade-in fill-mode-both"
+              style={{ animationDelay: `${index * 30}ms` }}
             >
               <div className="flex items-center gap-4">
                 <div className="h-12 w-12 rounded-xl bg-linear-to-br from-primary/20 to-primary/5 flex items-center justify-center overflow-hidden shrink-0 border border-primary/10 shadow-xs">
@@ -210,10 +201,9 @@ export function ConsultantDirectory() {
                    &quot;{consultant.bio}&quot;
                  </p>
               )}
-            </motion.div>
+            </div>
           ))}
-        </AnimatePresence>
-      </div>
+        </div>
       
       {hasMore && (
           <div className="flex justify-center mt-6">

@@ -48,6 +48,8 @@ export interface Opportunity {
   requirements?: string[];
   publishedAt?: any;
   createdBy?: string;
+  authorName?: string;
+  authorEmail?: string;
   createdAt: any;
   updatedAt?: any;
   formSchema?: FormField[];
@@ -101,16 +103,31 @@ export async function applyToOpportunity(
   });
 }
 
-/**
- * Creates a new opportunity in Firestore.
- */
 export async function createOpportunity(
   db: Firestore,
   data: Omit<Opportunity, 'id' | 'createdAt' | 'updatedAt' | 'status'>
 ): Promise<string> {
   const oppsRef = collection(db, "opportunities");
+  let authorName = '';
+  let authorEmail = '';
+
+  if (data.createdBy) {
+    try {
+      const profileSnap = await getDoc(doc(db, "consultantProfiles", data.createdBy));
+      if (profileSnap.exists()) {
+        const pData = profileSnap.data();
+        authorName = `${pData.firstName} ${pData.lastName}`.trim() || pData.name || '';
+        authorEmail = pData.email || '';
+      }
+    } catch (e) {
+      console.warn("Could not fetch profile for opportunity author denormalization", e);
+    }
+  }
+
   const docRef = await addDoc(oppsRef, {
     ...data,
+    ...(authorName ? { authorName } : {}),
+    ...(authorEmail ? { authorEmail } : {}),
     status: 'open',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()

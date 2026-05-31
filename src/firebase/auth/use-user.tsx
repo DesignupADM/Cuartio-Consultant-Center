@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, createContext, useContext, ReactNode } from 'react';
+import { useState, useEffect, createContext, useContext, ReactNode, useMemo } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { useAuth, useFirestore } from '../provider';
@@ -196,8 +196,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
     };
   }, [auth, db]);
 
+  const contextValue = useMemo(() => ({ user, profile, loading }), [user, profile, loading]);
+
   return (
-    <UserContext.Provider value={{ user, profile, loading }}>
+    <UserContext.Provider value={contextValue}>
       {children}
     </UserContext.Provider>
   );
