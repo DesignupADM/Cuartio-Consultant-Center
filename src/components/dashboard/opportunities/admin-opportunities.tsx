@@ -61,7 +61,7 @@ import { collection, updateDoc, doc, query, orderBy, getDoc } from "firebase/fir
 import { createOpportunity, type Opportunity } from "@/firebase/firestore/opportunities"
 import { errorEmitter } from "@/firebase/error-emitter"
 import { FirestorePermissionError } from "@/firebase/errors"
-import { motion, AnimatePresence } from "framer-motion"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 type Applicant = {
   id: string;
@@ -124,20 +124,7 @@ export function AdminOpportunities() {
         </div>
       </div>
 
-      <motion.div 
-        initial="hidden"
-        animate="show"
-        variants={{
-          hidden: { opacity: 0 },
-          show: {
-            opacity: 1,
-            transition: {
-              staggerChildren: 0.1
-            }
-          }
-        }}
-        className="grid gap-6 md:grid-cols-2 lg:grid-cols-3"
-      >
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 animate-in fade-in slide-in-from-bottom-4 duration-500">
         {oppsLoading ? (
           <div className="col-span-full">
             <StatePanel title="Loading opportunities" description="We are syncing the latest project list now." />
@@ -151,20 +138,9 @@ export function AdminOpportunities() {
             <StatePanel title="No matching projects" description="Try a different search term or clear the current filter." />
           </div>
         ) : (
-          <AnimatePresence mode="popLayout">
+          <>
             {filteredOpportunities.map((opp) => (
-              <motion.div
-                key={opp.id}
-                layout
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ duration: 0.3 }}
-                variants={{
-                  hidden: { opacity: 0, scale: 0.95, y: 20 },
-                  show: { opacity: 1, scale: 1, y: 0 }
-                }}
-              >
+              <div key={opp.id} className="animate-in fade-in zoom-in-95 duration-300">
                 <Card className="group h-full transition-all hover:ring-2 hover:ring-primary/40 border-none ring-1 ring-border bg-card/60 flex flex-col justify-between">
                   <div>
                     <CardHeader>
@@ -200,11 +176,11 @@ export function AdminOpportunities() {
                     </Button>
                   </CardFooter>
                 </Card>
-              </motion.div>
+              </div>
             ))}
-          </AnimatePresence>
+          </>
         )}
-      </motion.div>
+      </div>
 
       {oppsHasMore && (
         <div className="flex justify-center pt-4 pb-8">

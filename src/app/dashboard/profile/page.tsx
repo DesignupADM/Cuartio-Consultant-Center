@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react"
 import Image from "next/image"
-import { DashboardLayout } from "@/components/dashboard-layout"
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -534,17 +534,15 @@ export default function ProfilePage() {
 
   if (userLoading) {
     return (
-      <DashboardLayout role={role}>
-        <div className="flex items-center justify-center p-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        </div>
-      </DashboardLayout>
+      <div className="flex items-center justify-center p-20">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
     )
   }
 
   if (role === "admin") {
     return (
-      <DashboardLayout role="admin">
+      <>
         <AdminProfileView 
           user={user} 
           profile={userProfile} 
@@ -552,12 +550,12 @@ export default function ProfilePage() {
           storage={storage} 
           toast={toast} 
         />
-      </DashboardLayout>
+      </>
     )
   }
 
   return (
-    <DashboardLayout role={role}>
+    <>
       <div className="max-w-4xl mx-auto space-y-8 pb-20">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
@@ -810,6 +808,6 @@ export default function ProfilePage() {
           </div>
         </div>
       </div>
-    </DashboardLayout>
+    </>
   )
 }

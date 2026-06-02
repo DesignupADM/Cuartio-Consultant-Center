@@ -4,7 +4,6 @@ import * as React from "react"
 import { useState, useMemo, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { PageLoadingState, StatePanel, TableStatusRow } from "@/components/dashboard-feedback"
-import { DashboardLayout } from "@/components/dashboard-layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -56,14 +55,25 @@ type Applicant = {
   location: string;
 }
 
+type OpportunityState = {
+  id: string
+  opportunity: Opportunity | null
+  loading: boolean
+}
+
 export default function OpportunityApplicantsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params)
   const { toast } = useToast()
   const db = useFirestore()
   const router = useRouter()
 
-  const [opportunity, setOpportunity] = useState<Opportunity | null>(null)
-  const [oppLoading, setOppLoading] = useState(true)
+  const [opportunityState, setOpportunityState] = useState<OpportunityState>(() => ({
+    id,
+    opportunity: null,
+    loading: true,
+  }))
+  const opportunity = opportunityState.id === id ? opportunityState.opportunity : null
+  const oppLoading = opportunityState.id !== id || opportunityState.loading
 
   const [statusFilter, setStatusFilter] = useState<'all' | 'applied' | 'accepted' | 'declined'>('all')
   const [selectedConsultantId, setSelectedConsultantId] = useState<string | null>(null)
@@ -76,20 +86,24 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
 
   // Fetch opportunity details
   useEffect(() => {
-    setOppLoading(true)
+    let active = true
     const docRef = doc(db, "opportunities", id)
     getDoc(docRef).then((snap) => {
-      if (snap.exists()) {
-        setOpportunity({ id: snap.id, ...snap.data() } as Opportunity)
-      } else {
-        setOpportunity(null)
-      }
-      setOppLoading(false)
+      if (!active) return
+      setOpportunityState({
+        id,
+        opportunity: snap.exists() ? ({ id: snap.id, ...snap.data() } as Opportunity) : null,
+        loading: false,
+      })
     }).catch((err) => {
+      if (!active) return
       console.error("Failed to load opportunity", err)
-      setOpportunity(null)
-      setOppLoading(false)
+      setOpportunityState({ id, opportunity: null, loading: false })
     })
+
+    return () => {
+      active = false
+    }
   }, [db, id])
 
   // Fetch applicants
@@ -200,27 +214,20 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
   }
 
   if (oppLoading) {
-    return (
-      <DashboardLayout>
-        <PageLoadingState message="Loading project management..." />
-      </DashboardLayout>
-    )
+    return <PageLoadingState message="Loading project management..." />
   }
 
   if (!opportunity) {
     return (
-      <DashboardLayout>
-        <StatePanel 
-          title="Project Not Found" 
-          description="The requested project opportunity could not be found or has been deleted." 
-        />
-      </DashboardLayout>
+      <StatePanel
+        title="Project Not Found"
+        description="The requested project opportunity could not be found or has been deleted."
+      />
     )
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="space-y-8 animate-in fade-in duration-500">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center gap-4">
             <Button 
@@ -649,7 +656,6 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
             </div>
           </SheetContent>
         </Sheet>
-      </div>
-    </DashboardLayout>
+    </div>
   )
 }

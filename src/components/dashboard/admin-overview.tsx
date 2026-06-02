@@ -30,7 +30,7 @@ const Cell = dynamic(() => import("recharts").then((mod) => mod.Cell), { ssr: fa
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { motion, Variants } from "framer-motion"
+
 
 type ConsultantProfileRecord = {
   id: string
@@ -76,9 +76,8 @@ export function AdminOverview() {
   const pendingConsultants = statsData?.pendingConsultants ?? null
   const openOpportunitiesCount = statsData?.openOpportunities ?? null
 
-  // Fetch only the latest 100 consultants for charts and recent feed
-  // Bypassing orderBy on Firestore to avoid index requirements, and sorting client-side
-  const recentConsultantsQuery = useMemo(() => query(collection(db, "consultantProfiles"), limit(100)), [db])
+  // Fetch only the latest 4 consultants for recent feed
+  const recentConsultantsQuery = useMemo(() => query(collection(db, "consultantProfiles"), limit(4)), [db])
   const { data: recentConsultants, loading: recentConsultantsLoading } = useCollection<ConsultantProfileRecord>(recentConsultantsQuery as any)
 
   const sortedRecentConsultants = useMemo(() => {
@@ -97,64 +96,23 @@ export function AdminOverview() {
     { title: "Network Status", value: "Active", description: "All services operational", icon: Globe, color: "bg-accent/10 text-accent-foreground", href: `/dashboard/notifications` }
   ]
 
-  // Sector data is computed from the most recent 100, instead of blocking the entire dashboard performance by downloading thousands.
+  // Data is computed by Cloud Functions and saved to _system/dashboard_stats
   const sectorData = useMemo(() => {
-    if (!sortedRecentConsultants || sortedRecentConsultants.length === 0) return []
-    
-    const distribution: Record<string, number> = {}
-    sortedRecentConsultants.forEach((c: any) => {
-      const sector = c.sector || "Uncategorized"
-      distribution[sector] = (distribution[sector] || 0) + 1
-    })
-
-    const colorsList = [
-      "#1e3a8a", // Deep Indigo/Dark Blue
-      "#2563eb", // Royal Cobalt
-      "#3b82f6", // Classic Blue
-      "#60a5fa", // Horizon Light Blue
-      "#93c5fd"  // Soft Pastel Blue
-    ]
-    return Object.entries(distribution).map(([name, value], i) => ({
-      name,
-      value,
+    if (!statsData?.sectorData) return []
+    const colorsList = ["#1e3a8a", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd"]
+    return statsData.sectorData.map((s: any, i: number) => ({
+      ...s,
       color: colorsList[i % colorsList.length]
-    })).sort((a, b) => b.value - a.value)
-  }, [sortedRecentConsultants])
+    }))
+  }, [statsData])
 
-  const trendData = useMemo(() => {
-    if (!sortedRecentConsultants || sortedRecentConsultants.length === 0) return [
-      { month: "Jan", apps: 0 },
-      { month: "Feb", apps: 0 },
-      { month: "Mar", apps: 0 },
-      { month: "Apr", apps: 0 },
-      { month: "May", apps: 0 },
-      { month: "Jun", apps: 0 },
-    ];
-
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const counts: Record<string, number> = {};
-    
-    const currentMonth = new Date().getMonth();
-    for (let i = 5; i >= 0; i--) {
-      const m = months[(currentMonth - i + 12) % 12];
-      counts[m] = 0;
-    }
-
-    sortedRecentConsultants.forEach((c: any) => {
-      const date = toDate(c.createdAt) || new Date();
-      // eslint-disable-next-line react-hooks/purity
-      if (Date.now() - date.getTime() > 1000 * 60 * 60 * 24 * 180) return; // ignore older than 6mo
-      const monthName = months[date.getMonth()];
-      if (counts[monthName] !== undefined) {
-        counts[monthName]++;
-      }
-    });
-
-    return Object.entries(counts).map(([month, apps]) => ({ month, apps }));
-  }, [sortedRecentConsultants]);
+  const trendData = statsData?.monthlyTrend || [
+    { month: "Jan", apps: 0 }, { month: "Feb", apps: 0 }, { month: "Mar", apps: 0 },
+    { month: "Apr", apps: 0 }, { month: "May", apps: 0 }, { month: "Jun", apps: 0 }
+  ];
 
   const statsCalculations = useMemo(() => {
-    const totalSectors = sectorData.reduce((acc, s) => acc + s.value, 0);
+    const totalSectors = sectorData.reduce((acc: any, s: any) => acc + s.value, 0);
     return { yoy: "Recent Sample", totalSectors: totalSectors || 1 };
   }, [sectorData]);
 
@@ -176,19 +134,6 @@ export function AdminOverview() {
     return `${openOpportunitiesCount} open opportunities are visible to the network, ${pendingConsultants} consultant profiles are still pending verification, and ${sectorSummary}`
   }, [totalConsultants, openOpportunitiesCount, pendingConsultants, sectorData, statsCalculations.totalSectors])
 
-  const container: Variants = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: { staggerChildren: 0.1 }
-    }
-  }
-
-  const item: Variants = {
-    hidden: { opacity: 0, scale: 0.95 },
-    show: { opacity: 1, scale: 1, transition: { type: "spring", stiffness: 300, damping: 24 } }
-  }
-
   return (
     <div className="flex flex-col gap-8 animate-in fade-in duration-700">
       <div className="flex items-center justify-between">
@@ -208,7 +153,7 @@ export function AdminOverview() {
         </div>
       </div>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+      <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
         <Card className="border-none ring-1 ring-border bg-primary text-primary-foreground shadow-xl shadow-primary/10 overflow-hidden relative group">
           <div className="absolute top-0 right-0 p-6 opacity-10 transform translate-x-4 -translate-y-4 group-hover:translate-x-0 group-hover:translate-y-0 transition-transform duration-700">
             <Sparkles className="h-32 w-32" />
@@ -228,16 +173,11 @@ export function AdminOverview() {
             </Button>
           </CardContent>
         </Card>
-      </motion.div>
+      </div>
 
-      <motion.div 
-        variants={container}
-        initial="hidden"
-        animate="show"
-        className="grid gap-6 md:grid-cols-2 lg:grid-cols-4"
-      >
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
         {adminStats.map((stat, i) => (
-          <motion.div key={stat.title} variants={item}>
+          <div key={stat.title} className="animate-in fade-in zoom-in-95 duration-300">
             <Link href={stat.href}>
               <Card className="hover:ring-2 hover:ring-primary/20 transition-all duration-300 hover:shadow-xl group border-none ring-1 ring-border shadow-xs h-full">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
@@ -255,9 +195,9 @@ export function AdminOverview() {
                 </CardContent>
               </Card>
             </Link>
-          </motion.div>
+          </div>
         ))}
-      </motion.div>
+      </div>
 
       <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-7">
         <Card className="lg:col-span-4 shadow-xs border-none ring-1 ring-border bg-card/60 backdrop-blur-xs overflow-hidden">
@@ -326,7 +266,7 @@ export function AdminOverview() {
                   dataKey="value"
                   animationDuration={1500}
                 >
-                  {sectorData.map((entry, index) => (
+                  {sectorData.map((entry: any, index: number) => (
                     <Cell key={`cell-${index}`} fill={entry.color} strokeWidth={0} />
                   ))}
                 </Pie>
@@ -334,7 +274,7 @@ export function AdminOverview() {
               </PieChart>
             </ChartContainer>
             <div className="grid grid-cols-2 gap-x-6 gap-y-3 mt-6 px-4">
-              {sectorData.map((s) => (
+              {sectorData.map((s: any) => (
                 <div key={s.name} className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: s.color }} />

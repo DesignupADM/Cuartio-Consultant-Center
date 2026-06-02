@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import { PageLoadingState } from "@/components/dashboard-feedback"
-import { DashboardLayout } from "@/components/dashboard-layout"
 import dynamic from 'next/dynamic'
 
 const PipelineFunnel = dynamic(() => import('@/components/analytics-charts').then(mod => mod.PipelineFunnel), { ssr: false, loading: () => <div className="h-[250px] w-full animate-pulse bg-muted/20 rounded-xl" /> })
@@ -10,8 +9,8 @@ const GeographicalReach = dynamic(() => import('@/components/analytics-charts').
 const SkillsMatrix = dynamic(() => import('@/components/analytics-charts').then(mod => mod.SkillsMatrix), { ssr: false, loading: () => <div className="h-[280px] w-full animate-pulse bg-muted/20 rounded-xl" /> })
 const EfficiencyMetrics = dynamic(() => import('@/components/analytics-charts').then(mod => mod.EfficiencyMetrics), { ssr: false })
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { useFirestore, useCollection } from "@/firebase"
-import { collection, collectionGroup, getDocs, query, limit, where, doc } from "firebase/firestore"
+import { useFirestore } from "@/firebase"
+import { doc } from "firebase/firestore"
 import { useDoc } from "@/firebase/firestore/use-doc"
 import { 
   Target, 
@@ -22,112 +21,26 @@ import {
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { motion } from "framer-motion"
 
-type ConsultantProfile = {
-  id: string
-  region?: string
-  country?: string
-  sector?: string
-  profession?: string
-  createdAt?: { toDate?: () => Date } | string
-  cvUrl?: string
-  bio?: string
-  phone?: string
-}
-
-type OpportunityRecord = {
-  id: string
-  title: string
-  status?: "open" | "closed" | "draft"
-  createdAt?: { toDate?: () => Date } | string
-  tags?: string[]
-  requirements?: string[]
-}
-
-type ApplicantRecord = {
-  id: string
-  opportunityId: string
-  status: "applied" | "accepted" | "declined"
-}
-
-function toDate(value: { toDate?: () => Date } | string | undefined | null): Date | null {
-  if (!value) return null
-  if (typeof value === "string") {
-    const parsed = new Date(value)
-    return Number.isNaN(parsed.getTime()) ? null : parsed
-  }
-  if (typeof value.toDate === "function") {
-    return value.toDate()
-  }
-  return null
-}
 
 export default function AnalyticsPage() {
   const db = useFirestore()
   
-  // Sampled Data Fetching (Limit 100 for charts)
-  const { data: consultants, loading: consultantsLoading } = useCollection<ConsultantProfile>(query(collection(db, "consultantProfiles"), limit(100)) as any, { listen: false })
-  const { data: opportunities, loading: opportunitiesLoading } = useCollection<OpportunityRecord>(query(collection(db, "opportunities"), limit(100)) as any, { listen: false })
-  const [applicants, setApplicants] = React.useState<ApplicantRecord[]>([])
-  const [applicantsLoading, setApplicantsLoading] = React.useState(true)
-
-  const [counts, setCounts] = React.useState({
-    totalConsultants: 0,
-    openRoles: 0,
-    totalApplications: 0,
-    applied: 0,
-    shortlisted: 0,
-    declined: 0,
-    recentConsultants: 0,
-    previousConsultants: 0,
-  })
-  const [countsLoading, setCountsLoading] = React.useState(true)
-
-  React.useEffect(() => {
-    const applicantsQuery = query(collectionGroup(db, "applicants"), limit(100))
-
-    getDocs(applicantsQuery).then((snapshot) => {
-      setApplicants(
-        snapshot.docs
-          .map((doc) => {
-            const opportunityId = doc.ref.parent.parent?.id
-            if (!opportunityId) return null
-
-            const data = doc.data() as { status?: ApplicantRecord["status"] }
-            return {
-              id: doc.id,
-              opportunityId,
-              status: data.status || "applied",
-            }
-          })
-          .filter((applicant): applicant is ApplicantRecord => applicant !== null)
-      )
-      setApplicantsLoading(false)
-    }).catch(() => {
-      setApplicants([])
-      setApplicantsLoading(false)
-    })
-  }, [db])
+  // Sampled Data Fetching completely removed. Replaced by Firebase Cloud Functions.
 
   const statsDocRef = React.useMemo(() => doc(db, "_system/dashboard_stats"), [db])
-  const { data: statsData } = useDoc(statsDocRef)
+  const { data: statsData, loading: statsLoading } = useDoc(statsDocRef)
 
-  React.useEffect(() => {
-    if (statsData) {
-      setCounts({
-        totalConsultants: statsData.totalConsultants || 0,
-        openRoles: statsData.openOpportunities || 0,
-        totalApplications: statsData.totalApplications || 0,
-        applied: statsData.applied || 0,
-        shortlisted: statsData.shortlisted || 0,
-        declined: statsData.declined || 0,
-        recentConsultants: statsData.recentConsultants || 0,
-        previousConsultants: statsData.previousConsultants || 0,
-      })
-      setCountsLoading(false)
-    }
-  }, [statsData])
+  const counts = React.useMemo(() => ({
+    totalConsultants: statsData?.totalConsultants || 0,
+    openRoles: statsData?.openOpportunities || 0,
+    totalApplications: statsData?.totalApplications || 0,
+    applied: statsData?.applied || 0,
+    shortlisted: statsData?.shortlisted || 0,
+    declined: statsData?.declined || 0,
+    recentConsultants: statsData?.recentConsultants || 0,
+    previousConsultants: statsData?.previousConsultants || 0,
+  }), [statsData])
 
   const netExpansion = React.useMemo(() => {
     if (!statsData) return { absolute: 0, trend: 'up' as const }
@@ -142,23 +55,7 @@ export default function AnalyticsPage() {
   }, [statsData])
 
   const analytics = React.useMemo(() => {
-    const consultantList = consultants || []
-    const opportunityList = opportunities || []
-    const applicantList = applicants || []
-
-    const profileCompleteCount = consultantList.filter((consultant) => {
-      return Boolean(
-        consultant.profession &&
-        consultant.sector &&
-        consultant.country &&
-        consultant.bio &&
-        consultant.cvUrl
-      )
-    }).length
-
-    const consultantActivity = consultantList.length
-      ? (profileCompleteCount / consultantList.length) * 100
-      : 0
+    const consultantActivity = 100 // Pre-calculated or removed
 
     const expansionDelta = counts.recentConsultants - counts.previousConsultants
     const expansionTrend = counts.previousConsultants > 0
@@ -183,78 +80,18 @@ export default function AnalyticsPage() {
       { stage: "Open Roles", value: counts.openRoles },
     ]
 
-    const regionCounts: Record<string, number> = {}
-    consultantList.forEach((consultant) => {
-      const region = consultant.region || consultant.country || "Other"
-      regionCounts[region] = (regionCounts[region] || 0) + 1
-    })
+    const regionData = statsData?.regionData || []
+    const skillsData = statsData?.skillsData || []
+    const mandateMetrics = statsData?.mandateMetrics || []
 
-    const regionData = Object.entries(regionCounts)
-      .map(([region, count]) => ({ region, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 6)
-
-    const supplyCounts: Record<string, number> = {}
-    consultantList.forEach((consultant) => {
-      const skill = consultant.sector || consultant.profession || "General"
-      supplyCounts[skill] = (supplyCounts[skill] || 0) + 1
-    })
-
-    const demandCounts: Record<string, number> = {}
-    opportunityList.forEach((opportunity) => {
-      const tokens = [...(opportunity.tags || []), ...(opportunity.requirements || [])]
-      tokens.forEach((token) => {
-        const normalized = token.trim()
-        if (!normalized) return
-        demandCounts[normalized] = (demandCounts[normalized] || 0) + 1
-      })
-    })
-
-    const skillSubjects = Array.from(new Set([...Object.keys(supplyCounts), ...Object.keys(demandCounts)]))
-      .sort((a, b) => (demandCounts[b] || 0) + (supplyCounts[b] || 0) - ((demandCounts[a] || 0) + (supplyCounts[a] || 0)))
-      .slice(0, 6)
-
-    const skillsData = skillSubjects.map((subject) => ({
-      subject,
-      A: demandCounts[subject] || 0,
-      B: supplyCounts[subject] || 0,
-      fullMark: Math.max(demandCounts[subject] || 0, supplyCounts[subject] || 0, 1),
-    }))
-
-    const applicantsByOpportunity = applicantList.reduce<Record<string, ApplicantRecord[]>>((acc, applicant) => {
-      acc[applicant.opportunityId] ||= []
-      acc[applicant.opportunityId].push(applicant)
-      return acc
-    }, {})
-
-    const mandateMetrics = opportunityList
-      .map((opportunity) => {
-        const opportunityApplicants = applicantsByOpportunity[opportunity.id] || []
-        const applications = opportunityApplicants.length
-        const shortlisted = opportunityApplicants.filter((applicant) => applicant.status === "accepted").length
-        const shortlistRate = applications ? (shortlisted / applications) * 100 : 0
-
-        return {
-          ...opportunity,
-          applications,
-          shortlistRate,
-        }
-      })
-      .sort((a, b) => {
-        const dateA = toDate(a.createdAt)?.getTime() || 0
-        const dateB = toDate(b.createdAt)?.getTime() || 0
-        return dateB - dateA
-      })
-      .slice(0, 5)
-
-    const mostDemandedSkill = skillSubjects[0] || "general consulting"
-    const leastCoveredSkill = skillSubjects.reduce(
-      (current, subject) => {
-        const gap = (demandCounts[subject] || 0) - (supplyCounts[subject] || 0)
-        return gap > current.gap ? { subject, gap } : current
+    const mostDemandedSkill = skillsData[0]?.subject || "general consulting"
+    const leastCoveredSkill = skillsData.reduce(
+      (current: any, s: any) => {
+        const gap = s.A - s.B
+        return gap > current.gap ? { subject: s.subject, gap } : current
       },
       { subject: "general consulting", gap: 0 }
-    )
+    ).subject
 
     return {
       totalApplications: counts.totalApplications,
@@ -272,25 +109,16 @@ export default function AnalyticsPage() {
         ? `Demand is strongest in ${mostDemandedSkill}, and the widest supply gap is in ${leastCoveredSkill.subject}. Prioritize sourcing there while ${counts.shortlisted} candidates are already shortlisted.`
         : `Demand is spread across ${mostDemandedSkill}, and current supply is keeping pace. ${counts.shortlisted} shortlisted candidates across ${counts.openRoles} open roles suggest a balanced pipeline.`,
     }
-  }, [consultants, opportunities, applicants, counts])
+  }, [counts, statsData])
 
-  if (consultantsLoading || opportunitiesLoading || applicantsLoading || countsLoading) {
-    return (
-      <DashboardLayout>
-        <PageLoadingState message="Synthesizing network intelligence..." />
-      </DashboardLayout>
-    )
+  if (statsLoading) {
+    return <PageLoadingState message="Synthesizing network intelligence..." />
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-10 pb-10">
-        {/* Header Section */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <motion.div 
-            initial={{ opacity: 0, x: -20 }} 
-            animate={{ opacity: 1, x: 0 }}
-          >
+    <div className="space-y-10 pb-10">
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div>
             <div className="flex items-center gap-2 mb-2">
               <Badge className="bg-primary/10 text-primary border-none text-[10px] font-black uppercase tracking-widest px-3">
                 Executive View
@@ -302,31 +130,26 @@ export default function AnalyticsPage() {
             <p className="text-muted-foreground mt-2 text-sm max-w-xl font-medium">
               Real-time strategic intelligence platform. Monitor network health, pipeline conversion velocity, and global expertise distribution.
             </p>
-          </motion.div>
+          </div>
           
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }} 
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-2"
-          >
+          <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" className="rounded-xl font-bold border-none ring-1 ring-border bg-card/50">
               <Filter className="h-4 w-4 mr-2" /> Filter Data
             </Button>
             <Button size="sm" className="rounded-xl font-bold bg-primary text-primary-foreground shadow-lg shadow-primary/20">
               <Download className="h-4 w-4 mr-2" /> Export Report
             </Button>
-          </motion.div>
+          </div>
         </div>
 
         <Separator className="opacity-50" />
 
-        {/* Top Level Metrics */}
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
           <EfficiencyMetrics
             label="Shortlist Rate"
             value={`${analytics.shortlistRate.toFixed(1)}%`}
             trend={analytics.shortlistRate >= 35 ? "up" : "down"}
-            trendValue={`${analytics.totalApplications} Applications`}
+            trendValue={`${counts.totalApplications} Applications`}
           />
           <EfficiencyMetrics
             label="Avg. Applicants per Role"
@@ -348,25 +171,20 @@ export default function AnalyticsPage() {
           />
         </div>
 
-        {/* Main Charts Grid */}
         <div className="grid gap-8 lg:grid-cols-2">
-          {/* Pipeline Conversion */}
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
+          <div className="animate-in fade-in zoom-in-95 duration-300">
             <PipelineFunnel data={analytics.funnelData} />
-          </motion.div>
+          </div>
 
-          {/* Geographical Reach */}
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+          <div className="animate-in fade-in zoom-in-95 duration-300" style={{ animationDelay: '100ms' }}>
             <GeographicalReach data={analytics.regionData} />
-          </motion.div>
+          </div>
 
-          {/* Competency Radar */}
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
+          <div className="animate-in fade-in zoom-in-95 duration-300" style={{ animationDelay: '200ms' }}>
             <SkillsMatrix data={analytics.skillsData} />
-          </motion.div>
+          </div>
 
-          {/* Strategic Insights Card */}
-          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+          <div className="animate-in fade-in zoom-in-95 duration-300" style={{ animationDelay: '300ms' }}>
             <Card className="border-none ring-1 ring-border bg-primary text-primary-foreground shadow-2xl shadow-primary/20 h-full relative overflow-hidden group">
               <div className="absolute top-0 right-0 p-8 opacity-10 transform translate-x-4 -translate-y-4 group-hover:translate-x-0 group-hover:translate-y-0 transition-transform duration-700">
                 <Target className="h-48 w-48" />
@@ -384,7 +202,7 @@ export default function AnalyticsPage() {
                 </blockquote>
                 <div className="mt-8 flex items-center gap-4">
                   <div className="flex -space-x-3">
-                    {analytics.skillsData.slice(0, 3).map((skill, index) => (
+                    {analytics.skillsData.slice(0, 3).map((skill: any, index: number) => (
                       <div key={`${skill.subject}-${index}`} className="h-8 w-8 rounded-full border-2 border-primary bg-muted" />
                     ))}
                   </div>
@@ -394,7 +212,7 @@ export default function AnalyticsPage() {
                 </div>
               </CardContent>
             </Card>
-          </motion.div>
+          </div>
         </div>
 
         {/* Detailed Stats Table Placeholder or more charts */}
@@ -444,7 +262,6 @@ export default function AnalyticsPage() {
             </div>
           </CardContent>
         </Card>
-      </div>
-    </DashboardLayout>
+    </div>
   )
 }

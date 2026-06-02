@@ -2,7 +2,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { DashboardLayout } from "@/components/dashboard-layout"
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -301,7 +301,7 @@ export default function AdminPanelPage() {
   }
 
   return (
-    <DashboardLayout role="admin">
+    <>
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-primary font-headline">Admin Panel</h1>
@@ -762,6 +762,6 @@ export default function AdminPanelPage() {
           </DialogContent>
         </Dialog>
       </div>
-    </DashboardLayout>
+    </>
   )
 }

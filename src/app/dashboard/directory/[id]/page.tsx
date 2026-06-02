@@ -5,7 +5,7 @@ import { useEffect, useState, useMemo } from "react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import Link from "next/link"
-import { DashboardLayout } from "@/components/dashboard-layout"
+import { ProtectedRoute } from "@/components/protected-route"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -33,6 +33,12 @@ import { PageLoadingState, StatePanel } from "@/components/dashboard-feedback"
 import { formatCountryDisplay } from "@/lib/countries"
 
 
+type ConsultantProfileState = {
+  id: string
+  consultant: Consultant | null
+  loading: boolean
+}
+
 
 export default function ConsultantProfilePage({
   params,
@@ -43,14 +49,13 @@ export default function ConsultantProfilePage({
   const router = useRouter()
   const db = useFirestore()
 
-  const [consultant, setConsultant] = useState<Consultant | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [prevId, setPrevId] = useState(id)
-
-  if (id !== prevId) {
-    setPrevId(id)
-    setLoading(true)
-  }
+  const [profileState, setProfileState] = useState<ConsultantProfileState>(() => ({
+    id,
+    consultant: null,
+    loading: true,
+  }))
+  const consultant = profileState.id === id ? profileState.consultant : null
+  const loading = profileState.id !== id || profileState.loading
 
   // Fetch registration questions for custom answers
   const questionsQuery = useMemo(
@@ -71,19 +76,16 @@ export default function ConsultantProfilePage({
     getDoc(ref)
       .then((snap) => {
         if (!active) return
-        if (snap.exists()) {
-          setConsultant({ id: snap.id, ...snap.data() } as Consultant)
-        } else {
-          setConsultant(null)
-        }
+        setProfileState({
+          id,
+          consultant: snap.exists() ? ({ id: snap.id, ...snap.data() } as Consultant) : null,
+          loading: false,
+        })
       })
       .catch((err) => {
         if (!active) return
         console.error("Failed to load consultant", err)
-        setConsultant(null)
-      })
-      .finally(() => {
-        if (active) setLoading(false)
+        setProfileState({ id, consultant: null, loading: false })
       })
 
     return () => {
@@ -93,20 +95,20 @@ export default function ConsultantProfilePage({
 
   if (loading) {
     return (
-      <DashboardLayout role="admin">
+      <ProtectedRoute requiredRole="admin">
         <PageLoadingState message="Loading consultant profile..." />
-      </DashboardLayout>
+      </ProtectedRoute>
     )
   }
 
   if (!consultant) {
     return (
-      <DashboardLayout role="admin">
+      <ProtectedRoute requiredRole="admin">
         <StatePanel
           title="Profile Not Found"
           description="This consultant profile could not be found or may have been removed."
         />
-      </DashboardLayout>
+      </ProtectedRoute>
     )
   }
 
@@ -118,7 +120,7 @@ export default function ConsultantProfilePage({
   const status = statusConfig[consultant.status] || statusConfig.pending
 
   return (
-    <DashboardLayout role="admin">
+    <ProtectedRoute requiredRole="admin">
       <div className="max-w-5xl mx-auto space-y-8 animate-in fade-in duration-500 pb-16">
 
         {/* Page Header */}
@@ -413,6 +415,6 @@ export default function ConsultantProfilePage({
           </div>
         </div>
       </div>
-    </DashboardLayout>
+    </ProtectedRoute>
   )
 }

@@ -10,6 +10,30 @@ import { UserProfile } from '../firestore/users';
 const profileCache = new Map<string, UserProfile | null>();
 const profileRequestCache = new Map<string, Promise<UserProfile | null>>();
 
+const isE2ETest = process.env.NEXT_PUBLIC_E2E_TEST === "true";
+
+function getMockRole(): UserProfile["role"] {
+  if (typeof window === "undefined") {
+    return "admin";
+  }
+
+  return window.localStorage.getItem("mockRole") === "consultant" ? "consultant" : "admin";
+}
+
+function getMockUser(): User {
+  return { uid: "mock-uid", email: "test@example.com", displayName: "Test User" } as User;
+}
+
+function getMockProfile(): UserProfile {
+  return {
+    uid: "mock-uid",
+    email: "test@example.com",
+    role: getMockRole(),
+    firstName: "Test",
+    lastName: "User",
+  };
+}
+
 function buildConsultantProfile(firebaseUser: User, data?: Record<string, unknown>): UserProfile {
   return {
     uid: firebaseUser.uid,
@@ -108,11 +132,15 @@ const UserContext = createContext<UserContextType>({
 export function UserProvider({ children }: { children: ReactNode }) {
   const auth = useAuth();
   const db = useFirestore();
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(() => (isE2ETest ? getMockUser() : null));
+  const [profile, setProfile] = useState<UserProfile | null>(() => (isE2ETest ? getMockProfile() : null));
+  const [loading, setLoading] = useState(!isE2ETest);
 
   useEffect(() => {
+    if (isE2ETest) {
+      return;
+    }
+
     let unsubscribeProfile: (() => void) | null = null;
     let isCancelled = false;
 

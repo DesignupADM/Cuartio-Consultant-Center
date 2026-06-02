@@ -1,7 +1,7 @@
 "use client"
 
 import { Suspense } from "react"
-import { DashboardLayout } from "@/components/dashboard-layout"
+
 import { PageLoadingState } from "@/components/dashboard-feedback"
 import { useUser } from "@/firebase/auth/use-user"
 import { AdminOpportunities } from "@/components/dashboard/opportunities/admin-opportunities"
@@ -12,18 +12,18 @@ function OpportunitiesContent() {
 
   if (loading) {
     return (
-      <DashboardLayout>
+      <div className="flex items-center justify-center min-h-[60vh]">
         <PageLoadingState message="Loading opportunities hub..." />
-      </DashboardLayout>
+      </div>
     )
   }
 
   const role = profile?.role || "admin"
 
   return (
-    <DashboardLayout>
+    <>
       {role === "admin" ? <AdminOpportunities /> : <ConsultantOpportunities />}
-    </DashboardLayout>
+    </>
   )
 }
 

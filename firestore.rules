@@ -110,6 +110,10 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /_system/{docId} {
+      allow get, list: if isAdmin();
+    }
+
     match /consultantNotifications/{consultantId}/notifications/{notificationId} {
       allow get, list: if isOwner(consultantId) || isAdmin();
       allow create: if isAdmin();

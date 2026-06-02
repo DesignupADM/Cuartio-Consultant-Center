@@ -18,7 +18,7 @@ import {
   ChevronRight 
 } from "lucide-react"
 import Link from "next/link"
-import { motion, Variants } from "framer-motion"
+
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 
@@ -177,26 +177,11 @@ export function ConsultantOverview() {
     { title: "Network Status", value: "Active", description: "Platform operational", icon: Globe, color: "bg-accent/10 text-accent-foreground", href: `/dashboard/notifications?role=consultant` }
   ]
 
-  const container: Variants = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1
-      }
-    }
-  }
-
-  const item: Variants = {
-    hidden: { opacity: 0, scale: 0.95 },
-    show: { opacity: 1, scale: 1, transition: { type: "spring", stiffness: 300, damping: 24 } }
-  }
-
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
       
       {isProfileIncomplete && (
-        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+        <div className="mb-8 animate-in fade-in slide-in-from-top-4 duration-500">
           <Card className="border-amber-500/50 bg-amber-500/10 shadow-none">
             <CardContent className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6">
               <div>
@@ -213,7 +198,7 @@ export function ConsultantOverview() {
               </Button>
             </CardContent>
           </Card>
-        </motion.div>
+        </div>
       )}
 
       <div className="flex items-center justify-between">
@@ -233,14 +218,9 @@ export function ConsultantOverview() {
         </div>
       </div>
 
-      <motion.div 
-        variants={container}
-        initial="hidden"
-        animate="show"
-        className="grid gap-6 md:grid-cols-2 lg:grid-cols-4"
-      >
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
         {consultantStats.map((stat, i) => (
-          <motion.div key={stat.title} variants={item}>
+          <div key={stat.title} className="animate-in fade-in zoom-in-95 duration-300">
             <Link href={stat.href}>
               <Card className="hover:ring-2 hover:ring-primary/20 transition-all duration-300 hover:shadow-xl group border-none ring-1 ring-border shadow-xs h-full">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
@@ -258,9 +238,9 @@ export function ConsultantOverview() {
                 </CardContent>
               </Card>
             </Link>
-          </motion.div>
+          </div>
         ))}
-      </motion.div>
+      </div>
 
       <div className="grid gap-8 md:grid-cols-3">
         <Card className="md:col-span-2 shadow-xs border-none ring-1 ring-border bg-card/60 backdrop-blur-xs">

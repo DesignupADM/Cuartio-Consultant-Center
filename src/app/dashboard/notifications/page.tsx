@@ -1,7 +1,7 @@
 "use client"
 
 import { StatePanel, TableStatusRow } from "@/components/dashboard-feedback"
-import { DashboardLayout } from "@/components/dashboard-layout"
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -13,7 +13,7 @@ import { useUser } from "@/firebase/auth/use-user"
 
 import { useFirestore, useCollection } from "@/firebase"
 import { collection, query, orderBy, addDoc, serverTimestamp } from "firebase/firestore"
-import { motion, AnimatePresence } from "framer-motion"
+
 import { useToast } from "@/hooks/use-toast"
 import { useState, useMemo } from "react"
 
@@ -70,7 +70,7 @@ export default function NotificationsPage() {
   }
 
   return (
-    <DashboardLayout role={role}>
+    <>
       <div className="space-y-8 animate-in fade-in duration-700">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -136,7 +136,6 @@ export default function NotificationsPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      <AnimatePresence mode="popLayout">
                         {logsLoading ? (
                           <TableStatusRow colSpan={3} message="Loading logs..." loading />
                         ) : logsError ? (
@@ -145,12 +144,10 @@ export default function NotificationsPage() {
                           <TableStatusRow colSpan={3} message="No notification history has been recorded yet." />
                         ) : (
                           logs.map((log: any, index: number) => (
-                            <motion.tr 
-                              key={log.id} 
-                              initial={{ opacity: 0, x: -10 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{ delay: index * 0.05 }}
-                              className="text-xs group hover:bg-muted/20 transition-colors border-b border-muted/20"
+                            <TableRow
+                              key={log.id}
+                              className="text-xs group hover:bg-muted/20 transition-colors border-b border-muted/20 animate-in fade-in slide-in-from-left-4 duration-500"
+                              style={{ animationDelay: `${index * 50}ms`, animationFillMode: 'both' }}
                             >
                               <TableCell className="py-4">
                                 <p className="font-bold text-foreground">{log.recipient}</p>
@@ -165,10 +162,9 @@ export default function NotificationsPage() {
                               <TableCell className="text-right text-[10px] font-black text-muted-foreground pr-6">
                                 {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : "Pending timestamp"}
                               </TableCell>
-                            </motion.tr>
+                            </TableRow>
                           ))
                         )}
-                      </AnimatePresence>
                     </TableBody>
                  </Table>
                </div>
@@ -176,6 +172,6 @@ export default function NotificationsPage() {
           </Card>
         </div>
       </div>
-    </DashboardLayout>
+    </>
   )
 }
