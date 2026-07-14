@@ -24,11 +24,8 @@ service cloud.firestore {
     match /adminRoles/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
-      allow create: if isAdmin() || (
-        isOwner(userId) && 
-        exists(/databases/$(database)/documents/adminRoles/$( 'email:' + request.resource.data.email ))
-      );
-      allow update, delete: if isAdmin() || isOwner(userId);
+      allow create: if isAdmin();
+      allow update, delete: if isAdmin();
     }
 
     match /consultantRoles/{userId} {
@@ -42,7 +39,11 @@ service cloud.firestore {
       allow get: if isOwner(consultantId) || isAdmin();
       allow list: if isAdmin();
       allow create: if (isOwner(consultantId) || isAdmin()) && request.resource.data.id == consultantId;
-      allow update: if (isOwner(consultantId) || isAdmin()) && request.resource.data.id == resource.data.id;
+      allow update: if isAdmin() || (
+        isOwner(consultantId) &&
+        request.resource.data.id == resource.data.id &&
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'aiInsight', 'role']))
+      );
       allow delete: if isAdmin();
     }
 
@@ -53,7 +54,7 @@ service cloud.firestore {
 
       match /applicants/{userId} {
         allow get: if isOwner(userId) || isAdmin();
-        allow create: if isOwner(userId);
+        allow create: if isOwner(userId) && request.resource.data.status == 'applied';
         allow update, delete: if isAdmin();
         allow list: if isAdmin();
       }

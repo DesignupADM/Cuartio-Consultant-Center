@@ -1,0 +1,43 @@
+
+> nextn@0.1.0 dev
+> next dev --turbopack -p 9002 -p 3005
+
+   ▲ Next.js 15.5.9 (Turbopack)
+   - Local:        http://localhost:3005
+   - Network:      http://192.168.0.2:3005
+
+ ✓ Starting...
+ ✓ Ready in 1561ms
+ ○ Compiling /dashboard ...
+ ✓ Compiled /dashboard in 10.8s
+ HEAD /dashboard 200 in 12142ms
+ ○ Compiling / ...
+ ✓ Compiled / in 1062ms
+ GET / 307 in 1287ms
+ ○ Compiling /login ...
+ ✓ Compiled /login in 995ms
+ GET /login 200 in 1302ms
+ GET / 307 in 196ms
+ GET /login 200 in 244ms
+ GET /dashboard 200 in 699ms
+ GET /dashboard 200 in 835ms
+ ○ Compiling /dashboard/analytics ...
+ ✓ Compiled /dashboard/analytics in 3.1s
+ GET /dashboard/profile 200 in 2755ms
+ GET /dashboard/analytics 200 in 3412ms
+ ○ Compiling /dashboard/opportunities ...
+ ✓ Compiled /dashboard/opportunities in 1126ms
+ GET /dashboard/opportunities 200 in 1219ms
+ ○ Compiling /dashboard/directory ...
+ ✓ Compiled /dashboard/directory in 5.6s
+ GET /dashboard/directory 200 in 6641ms
+ GET / 307 in 455ms
+ GET /login 200 in 211ms
+ GET / 307 in 177ms
+ GET /login 200 in 237ms
+ GET /dashboard 200 in 530ms
+ GET /dashboard 200 in 1126ms
+ GET /dashboard/analytics 200 in 290ms
+ GET /dashboard/opportunities 200 in 234ms
+ GET /dashboard/profile 200 in 270ms
+ GET /dashboard/directory 200 in 333ms
