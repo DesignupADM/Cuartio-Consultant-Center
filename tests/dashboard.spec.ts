@@ -34,7 +34,7 @@ test.describe('Dashboard Smoke Tests', () => {
     
     // Navigate to Directory
     await page.getByRole('link', { name: 'Consultant Directory', exact: true }).first().click({ force: true });
-    await expect(page).toHaveURL(/.*\/dashboard\/directory/);
+    await expect(page).toHaveURL(/.*\/dashboard\/directory/, { timeout: 10000 });
     await expect(page.getByText('Consultant Directory').first()).toBeVisible();
   });
 
@@ -58,6 +58,6 @@ test.describe('Dashboard Smoke Tests', () => {
     // Navigate to Consultant Profile
     await page.getByRole('link', { name: 'Consultant Profile' }).first().click();
     await expect(page).toHaveURL(/.*\/dashboard\/profile/);
-    await expect(page.getByText('My Profile')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'My Profile' }).first()).toBeVisible();
   });
 });

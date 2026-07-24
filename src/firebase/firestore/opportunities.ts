@@ -86,7 +86,7 @@ export async function applyToOpportunity(
 
     transaction.set(applicantRef, applicantData);
     
-    // Also merge answers into profile
+    // Also merge answers into profile using update for transactional safety
     const profileUpdates: any = {};
     if (applicationDetails?.cvUrl) {
       profileUpdates.cvUrl = applicationDetails.cvUrl;
@@ -98,7 +98,7 @@ export async function applyToOpportunity(
     }
     
     if (Object.keys(profileUpdates).length > 0) {
-      transaction.set(profileRef, profileUpdates, { merge: true });
+      transaction.update(profileRef, profileUpdates);
     }
   });
 }
