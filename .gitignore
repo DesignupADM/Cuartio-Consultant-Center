@@ -46,3 +46,10 @@ firestore-debug.log
 
 # functions
 /functions/node_modules/
+
+consultants.json
+imported-consultants.json
+import-verification.json
+imported-credentials.csv
+studio-994542503-84bfe-firebase-adminsdk-fbsvc-627b2e8f40.json
+update-consultants.js

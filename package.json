@@ -74,6 +74,7 @@
     "@types/react-dom": "^19.2.1",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.1",
+    "firebase-admin": "^14.0.0",
     "genkit-cli": "^1.28.0",
     "postcss": "^8",
     "tailwindcss": "^4.3.0",
