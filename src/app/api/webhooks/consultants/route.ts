@@ -38,6 +38,115 @@ const ARRAY_FIELDS = [
 
 const STATUS_VALUES = ["pending", "verified", "rejected"] as const
 
+// Elementor forms send { form_fields: { <fieldId>: value } }.
+// Field IDs are matched against normalized aliases; an explicit
+// { map: { <fieldId>: <consultantField> } } object can override.
+const ELEMENTOR_FIELD_MAP: Record<string, string> = {
+  email: "email",
+  email_address: "email",
+  e_mail: "email",
+  your_email: "email",
+  mail: "email",
+  first_name: "firstName",
+  firstname: "firstName",
+  fname: "firstName",
+  first: "firstName",
+  last_name: "lastName",
+  lastname: "lastName",
+  lname: "lastName",
+  last: "lastName",
+  country: "country",
+  city: "city",
+  state: "state",
+  province: "state",
+  region: "state",
+  profession: "profession",
+  occupation: "profession",
+  job_title: "profession",
+  discipline: "profession",
+  sector: "sector",
+  industry: "sector",
+  area: "sector",
+  years: "years",
+  years_experience: "years",
+  experience: "years",
+  bio: "bio",
+  message: "bio",
+  about: "bio",
+  summary: "bio",
+  comments: "bio",
+  phone: "phone",
+  telephone: "phone",
+  mobile: "phone",
+  cv_url: "cvUrl",
+  cvurl: "cvUrl",
+  resume_url: "cvUrl",
+  resume: "cvUrl",
+  cv: "cvUrl",
+  avatar_url: "avatarUrl",
+  avatarurl: "avatarUrl",
+  photo_url: "avatarUrl",
+  language: "language",
+  primary_language: "language",
+  website: "website",
+  linkedin: "website",
+  skype: "skype",
+  gender: "gender",
+  highest_degree: "highestDegree",
+  degree: "highestDegree",
+  education: "highestDegree",
+  completion_year: "completionYear",
+  graduation_year: "completionYear",
+  sectors: "sectors",
+  professions: "professions",
+  languages: "languages",
+  regions: "regions",
+  services: "services",
+  requirements: "requirements",
+}
+
+const TRUTHY_VALUES = ["true", "1", "yes", "on"]
+
+function normalizeKey(key: string): string {
+  return key.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
+}
+
+function buildConsultantFromElementor(
+  fields: Record<string, unknown>,
+  explicitMap?: Record<string, string>
+): Record<string, unknown> | null {
+  const result: Record<string, unknown> = {}
+  const consumed = new Set<string>()
+
+  if (explicitMap && typeof explicitMap === "object") {
+    for (const [src, dest] of Object.entries(explicitMap)) {
+      if (typeof dest === "string" && src in fields) {
+        result[dest] = fields[src]
+        consumed.add(src)
+      }
+    }
+  }
+
+  for (const [srcKey, value] of Object.entries(fields)) {
+    if (consumed.has(srcKey)) continue
+    const matched = ELEMENTOR_FIELD_MAP[normalizeKey(srcKey)]
+    if (matched && value !== null && value !== undefined && value !== "") {
+      result[matched] = value
+    }
+  }
+
+  const createAccountRaw = fields["create_account"] ?? fields["createAccount"]
+  const createAccount =
+    typeof createAccountRaw === "string"
+      ? TRUTHY_VALUES.includes(createAccountRaw.toLowerCase().trim())
+      : createAccountRaw === true
+  if (createAccount) {
+    result.createAccount = true
+  }
+
+  return result
+}
+
 type NormalizedConsultant = Record<string, unknown> & { email: string }
 
 function getSecret(): string | null {
@@ -141,11 +250,22 @@ function extractPayload(body: unknown): {
   if (Array.isArray(body)) {
     raws = body
   } else if (typeof body === "object" && body !== null) {
-    const wrapped = (body as Record<string, unknown>).consultants
-    if (Array.isArray(wrapped)) {
-      raws = wrapped
+    const obj = body as Record<string, unknown>
+    const formFields = obj.form_fields
+    if (formFields !== null && typeof formFields === "object" && !Array.isArray(formFields)) {
+      const explicitMap =
+        obj.map !== null && typeof obj.map === "object" && !Array.isArray(obj.map)
+          ? (obj.map as Record<string, string>)
+          : undefined
+      const elementorRecord = buildConsultantFromElementor(formFields as Record<string, unknown>, explicitMap)
+      raws = elementorRecord ? [elementorRecord] : []
     } else {
-      raws = [body]
+      const wrapped = obj.consultants
+      if (Array.isArray(wrapped)) {
+        raws = wrapped
+      } else {
+        raws = [body]
+      }
     }
   }
 
