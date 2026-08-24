@@ -68,7 +68,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useFirestore, useAuth, usePaginatedCollection, useCollection } from "@/firebase"
+import { useFirestore, useAuth, usePaginatedCollection, useCollection, useDoc } from "@/firebase"
 import { collection, query, where, doc, updateDoc, writeBatch, getDocs, serverTimestamp, limit, startAfter } from "firebase/firestore"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
@@ -343,6 +343,10 @@ export function AdminDirectory() {
   const db = useFirestore()
   const auth = useAuth()
 
+  const settingsRef = useMemo(() => doc(db, "settings", "global"), [db])
+  const { data: settings } = useDoc(settingsRef as any)
+  const aiExtractionEnabled = settings?.aiExtraction ?? true
+
   const [filters, setFilters] = useState({ country: '', sector: '', language: '', minYears: '' })
   const [isMessageDialogOpen, setIsMessageDialogOpen] = useState(false)
   const [messageMode, setMessageMode] = useState<'custom' | 'template'>('custom')
@@ -526,6 +530,14 @@ export function AdminDirectory() {
 
   const handleGenerateInsight = async () => {
     if (!activeConsultant) return
+    if (!aiExtractionEnabled) {
+      toast({
+        variant: "destructive",
+        title: "AI Analysis Disabled",
+        description: "AI CV extraction is turned off in System Settings.",
+      })
+      return
+    }
     setIsInsightLoading(true)
     try {
       const result = await adminCvInsightExtraction({
@@ -1146,17 +1158,23 @@ export function AdminDirectory() {
                     <div className="p-5">
                       <EmptyState 
                         icon={Sparkles}
-                        title="No Insights Yet"
-                        description="No AI analysis has been generated for this CV yet."
+                        title={aiExtractionEnabled ? "No Insights Yet" : "AI Analysis Disabled"}
+                        description={
+                          aiExtractionEnabled
+                            ? "No AI analysis has been generated for this CV yet."
+                            : "AI CV extraction has been turned off by an administrator in System Settings."
+                        }
                         action={
-                          <Button 
-                            onClick={handleGenerateInsight} 
-                            disabled={!activeConsultant.cvUrl || isInsightLoading}
-                            className="bg-primary hover:bg-primary/95 text-white"
-                            size="sm"
-                          >
-                            <Sparkles className="h-4 w-4 mr-2" /> Generate AI Profile Analysis
-                          </Button>
+                          aiExtractionEnabled ? (
+                            <Button 
+                              onClick={handleGenerateInsight} 
+                              disabled={!activeConsultant.cvUrl || isInsightLoading}
+                              className="bg-primary hover:bg-primary/95 text-white"
+                              size="sm"
+                            >
+                              <Sparkles className="h-4 w-4 mr-2" /> Generate AI Profile Analysis
+                            </Button>
+                          ) : undefined
                         }
                       />
                     </div>

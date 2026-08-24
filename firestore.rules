@@ -129,7 +129,7 @@ service cloud.firestore {
     }
 
     match /settings/{docId} {
-      allow get: if isSignedIn();
+      allow get: if isSignedIn() || docId == 'global';
       allow list: if isAdmin();
       allow create, update, delete: if isAdmin();
     }

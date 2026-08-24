@@ -28,20 +28,17 @@ import {
   ChevronDownSquare,
   X
 } from "lucide-react"
-import { useFirestore, useCollection, useDoc, useFirebaseApp } from "@/firebase"
+import { useFirestore, useCollection, useDoc, useFirebaseApp, useAuth } from "@/firebase"
 import { collection, query, where, doc, setDoc, updateDoc, deleteDoc, addDoc, orderBy, runTransaction } from "firebase/firestore"
 import { getFunctions, httpsCallable } from "firebase/functions"
 import { errorEmitter } from "@/firebase/error-emitter"
 import { FirestorePermissionError } from "@/firebase/errors"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
-import { useUser } from "@/firebase/auth/use-user"
-
 export default function AdminPanelPage() {
-  const { profile } = useUser()
-  const role = profile?.role || "admin"
   const { toast } = useToast()
   const db = useFirestore()
+  const auth = useAuth()
   const functions = getFunctions(useFirebaseApp())
   const [isSaving, setIsSaving] = useState(false)
   const [newQuestionType, setNewQuestionType] = useState<"text" | "textarea" | "select">("text")
@@ -149,8 +146,52 @@ export default function AdminPanelPage() {
   }
 
   const handleDeleteQuestion = (id: string) => {
+    if (!confirm("Remove this registration question? Existing consultant answers are kept but the question will no longer appear on the signup form.")) return
     deleteDoc(doc(db, "settings", "registration", "questions", id))
       .then(() => toast({ title: "Question Removed" }))
+      .catch(() => toast({ variant: "destructive", title: "Remove Failed" }))
+  }
+
+  const isInviteDoc = (acc: any) =>
+    typeof acc.id === "string" && (acc.id.startsWith("email:") || acc.enabled === false)
+
+  const downloadCsv = async (path: string, filename: string, label: string) => {
+    try {
+      toast({ title: `Preparing ${label}`, description: "Generating your file on the server..." })
+
+      const currentUser = auth.currentUser
+      if (!currentUser) {
+        toast({ variant: "destructive", title: "Not Authenticated", description: "Please sign in again." })
+        return
+      }
+
+      const idToken = await currentUser.getIdToken()
+      const response = await fetch(path, { headers: { Authorization: `Bearer ${idToken}` } })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null)
+        throw new Error(data?.error || `Download failed (${response.status})`)
+      }
+
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      toast({ title: `${label} Complete`, description: "Your download should begin shortly." })
+    } catch (err) {
+      console.error(`${label} failed:`, err)
+      toast({
+        variant: "destructive",
+        title: `${label} Failed`,
+        description: err instanceof Error ? err.message : "An error occurred generating the file.",
+      })
+    }
   }
 
   const handleDeleteAdmin = (adminId: string) => {
@@ -168,6 +209,7 @@ export default function AdminPanelPage() {
   }
 
   const openEditAdmin = (admin: any) => {
+    if (!isInviteDoc(admin)) return
     setEditingAdmin(admin)
     setAdminForm({ firstName: admin.firstName, lastName: admin.lastName, email: admin.email })
     setIsAdminDialogOpen(true)
@@ -352,11 +394,11 @@ export default function AdminPanelPage() {
                       <div className="space-y-4">
                         <div className="space-y-2">
                           <Label htmlFor="supportEmail" className="font-bold uppercase text-[10px] tracking-widest">Support Email</Label>
-                          <Input id="supportEmail" name="supportEmail" defaultValue={settings?.supportEmail ?? "support@curatio.com"} />
+                          <Input key={`support-${String(settingsLoading)}`} id="supportEmail" name="supportEmail" defaultValue={settings?.supportEmail ?? "support@curatio.com"} />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="dbLimit" className="font-bold uppercase text-[10px] tracking-widest">DB Export Limit</Label>
-                          <Input id="dbLimit" name="dbLimit" type="number" defaultValue={settings?.dbLimit ?? 5000} />
+                          <Input key={`limit-${String(settingsLoading)}`} id="dbLimit" name="dbLimit" type="number" defaultValue={settings?.dbLimit ?? 5000} />
                         </div>
                       </div>
                     </div>
@@ -378,10 +420,32 @@ export default function AdminPanelPage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <Button variant="outline" className="w-full justify-start font-bold text-xs uppercase tracking-widest" onClick={() => toast({ title: "Backup Started" })}>
-                    Backup Database
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start font-bold text-xs uppercase tracking-widest"
+                    onClick={() =>
+                      downloadCsv(
+                        "/api/export/consultants",
+                        `curatio_consultants_${new Date().toISOString().split("T")[0]}.csv`,
+                        "Database Backup"
+                      )
+                    }
+                  >
+                    <Database className="mr-2 h-4 w-4" />
+                    Backup Consultant Database
                   </Button>
-                  <Button variant="outline" className="w-full justify-start font-bold text-xs uppercase tracking-widest" onClick={() => toast({ title: "Logs Exported" })}>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start font-bold text-xs uppercase tracking-widest"
+                    onClick={() =>
+                      downloadCsv(
+                        "/api/export/logs",
+                        `curatio_audit_logs_${new Date().toISOString().split("T")[0]}.csv`,
+                        "Audit Log Export"
+                      )
+                    }
+                  >
+                    <ListTodo className="mr-2 h-4 w-4" />
                     Export Audit Logs
                   </Button>
                 </CardContent>
@@ -609,12 +673,27 @@ export default function AdminPanelPage() {
                             <Users className="h-4 w-4" />
                           </div>
                           <div>
-                            <p className="text-sm font-semibold">{acc.firstName} {acc.lastName}</p>
+                            <p className="text-sm font-semibold flex items-center gap-2">
+                              {acc.firstName} {acc.lastName}
+                              {isInviteDoc(acc) ? (
+                                <Badge variant="secondary" className="text-[9px] h-4 bg-amber-50 text-amber-700 border-amber-200">
+                                  Pending Invite
+                                </Badge>
+                              ) : (
+                                <Badge variant="secondary" className="text-[9px] h-4 bg-emerald-50 text-emerald-700 border-emerald-200">
+                                  Active
+                                </Badge>
+                              )}
+                            </p>
                             <p className="text-xs text-muted-foreground">{acc.email}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditAdmin(acc)}><SquarePen className="h-3 w-3" /></Button>
+                          {isInviteDoc(acc) && (
+                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditAdmin(acc)}>
+                              <SquarePen className="h-3 w-3" />
+                            </Button>
+                          )}
                           <Button 
                             variant="ghost" 
                             size="icon" 
@@ -637,7 +716,7 @@ export default function AdminPanelPage() {
         <Dialog open={isAdminDialogOpen} onOpenChange={setIsAdminDialogOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{editingAdmin ? "Edit Admin" : "Add New Admin"}</DialogTitle>
+              <DialogTitle>{editingAdmin ? "Edit Admin Invite" : "Invite Administrator"}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleSaveAdmin} className="space-y-4 pt-4">
               <div className="grid grid-cols-2 gap-4">
@@ -671,7 +750,7 @@ export default function AdminPanelPage() {
                 <Button type="button" variant="ghost" onClick={() => setIsAdminDialogOpen(false)}>Cancel</Button>
                 <Button type="submit" disabled={isSaving}>
                   {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  {editingAdmin ? "Save Changes" : "Create Admin Phase-1"}
+                  {editingAdmin ? "Save Invite" : "Send Admin Invite"}
                 </Button>
               </DialogFooter>
             </form>

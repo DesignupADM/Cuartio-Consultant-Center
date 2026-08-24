@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import type { Query, DocumentData } from "firebase-admin/firestore"
 import { adminDb, isAdminUser } from "@/lib/firebase-admin"
 
 const CSV_COLUMNS = [
@@ -47,7 +48,15 @@ export async function GET(request: Request) {
   const rows: string[] = [CSV_COLUMNS.join(",")]
 
   try {
-    const snapshot = await adminDb.collection("consultantProfiles").get()
+    let exportQuery: Query<DocumentData> = adminDb.collection("consultantProfiles")
+
+    const settingsSnap = await adminDb.collection("settings").doc("global").get()
+    const dbLimit = settingsSnap.data()?.dbLimit
+    if (typeof dbLimit === "number" && dbLimit > 0) {
+      exportQuery = exportQuery.limit(dbLimit)
+    }
+
+    const snapshot = await exportQuery.get()
 
     snapshot.docs.forEach((doc) => {
       const c = doc.data() as Record<string, unknown>
