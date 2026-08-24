@@ -252,7 +252,7 @@ export default function ApplyPage({ params }: { params: Promise<{ id: string }> 
                   </div>
                   <Card className="bg-primary/5 border-none p-4">
                      <p className="text-xs leading-relaxed text-primary/80">
-                       By submitting, you agree to create a Curatio Foundation consultant account. Your data will be used for project matching and recruitment purposes.
+                       By submitting, you agree to create a Curatio International Foundation consultant account. Your data will be used for project matching and recruitment purposes.
                      </p>
                   </Card>
                 </div>

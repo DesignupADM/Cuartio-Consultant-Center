@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { useAuth, useFirestore, useCollection } from "@/firebase"
+import { useAuth, useFirestore, useCollection, useFirebaseApp } from "@/firebase"
 import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth"
 import { createUserProfile, getUserProfile } from "@/firebase/firestore/users"
 import { useUser } from "@/firebase/auth/use-user"
 import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
-import { collection, query, orderBy, doc, getDoc, setDoc, deleteDoc } from "firebase/firestore"
+import { collection, query, orderBy } from "firebase/firestore"
+import { getFunctions, httpsCallable } from "firebase/functions"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
@@ -23,6 +24,7 @@ export default function RegisterPage() {
   const router = useRouter()
   const auth = useAuth()
   const db = useFirestore()
+  const functions = getFunctions(useFirebaseApp())
   const { user, loading: authLoading } = useUser()
   const { toast } = useToast()
   
@@ -43,27 +45,32 @@ export default function RegisterPage() {
     }
   }, [user, authLoading, router])
 
+  const tryActivateInvitedAdmin = async (): Promise<"admin" | "consultant"> => {
+    try {
+      const completeAdminRegistration = httpsCallable(functions, "completeAdminRegistration")
+      const result = await completeAdminRegistration({})
+      const role = (result.data as { role?: string } | null)?.role
+      return role === "admin" ? "admin" : "consultant"
+    } catch (err) {
+      console.warn("Admin invitation check failed, continuing as consultant:", err)
+      return "consultant"
+    }
+  }
+
   const handleGoogleRegister = async () => {
     setIsLoading(true)
     const provider = new GoogleAuthProvider()
     
     try {
       const result = await signInWithPopup(auth, provider)
-      const cleanEmail = result.user.email?.toLowerCase().trim() || ""
-      const pendingAdminRef = doc(db, "adminRoles", `email:${cleanEmail}`)
-      const pendingAdminSnap = await getDoc(pendingAdminRef)
-      
-      if (pendingAdminSnap.exists()) {
-        const adminData = pendingAdminSnap.data()
-        await setDoc(doc(db, "adminRoles", result.user.uid), {
-          firstName: adminData.firstName || result.user.displayName?.split(" ")[0] || "",
-          lastName: adminData.lastName || result.user.displayName?.split(" ").slice(1).join(" ") || "",
-          email: cleanEmail,
-          role: "admin",
-          enabled: true,
-          createdAt: new Date().toISOString()
+      const activation = await tryActivateInvitedAdmin()
+
+      if (activation === "admin") {
+        await result.user.getIdToken(true)
+        toast({
+          title: "Registration Successful",
+          description: "Welcome back, Administrator.",
         })
-        await deleteDoc(pendingAdminRef)
         window.location.href = "/dashboard?role=admin"
       } else {
         const existingProfile = await getUserProfile(db, result.user.uid)
@@ -100,23 +107,11 @@ export default function RegisterPage() {
     setIsLoading(true)
     
     try {
-      const cleanEmail = email.toLowerCase().trim()
-      const pendingAdminRef = doc(db, "adminRoles", `email:${cleanEmail}`)
-      const pendingAdminSnap = await getDoc(pendingAdminRef)
-      
       const userCredential = await createUserWithEmailAndPassword(auth, email, password)
+      const activation = await tryActivateInvitedAdmin()
       
-      if (pendingAdminSnap.exists()) {
-        const adminData = pendingAdminSnap.data()
-        await setDoc(doc(db, "adminRoles", userCredential.user.uid), {
-          firstName: adminData.firstName || firstName,
-          lastName: adminData.lastName || lastName,
-          email: cleanEmail,
-          role: "admin",
-          enabled: true,
-          createdAt: new Date().toISOString()
-        })
-        await deleteDoc(pendingAdminRef)
+      if (activation === "admin") {
+        await userCredential.user.getIdToken(true)
         
         toast({
           title: "Registration Successful",
@@ -140,7 +135,7 @@ export default function RegisterPage() {
         
         toast({
           title: "Registration Successful",
-          description: "Welcome to CIF Consultant Management. Please complete your profile.",
+          description: "Welcome to Curatio Consultant Center. Please complete your profile.",
         })
         window.location.href = "/dashboard"
       }
@@ -180,21 +175,21 @@ export default function RegisterPage() {
                 <div className="mb-4">
                   <Image 
                     src="/logo-color.png" 
-                    alt="CIF Logo" 
+                    alt="Curatio Logo" 
                     width={240} 
                     height={60} 
                     className="h-10 w-auto dark:hidden" 
                   />
                   <Image 
                     src="/logo-white.png" 
-                    alt="CIF Logo" 
+                    alt="Curatio Logo" 
                     width={240} 
                     height={60} 
                     className="h-10 w-auto hidden dark:block" 
                   />
                 </div>
                 <h1 className="text-2xl font-bold tracking-tight text-primary font-headline text-center">Create an account</h1>
-                <p className="text-muted-foreground mt-2 text-center text-sm">Join the CIF network as a professional consultant.</p>
+                <p className="text-muted-foreground mt-2 text-center text-sm">Join the Curatio International Foundation network as a professional consultant.</p>
               </div>
 
               <form onSubmit={handleRegister} className="space-y-4">

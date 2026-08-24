@@ -11,8 +11,8 @@ import { Send, History, CircleCheck, CircleAlert } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { useUser } from "@/firebase/auth/use-user"
 
-import { useFirestore, useCollection } from "@/firebase"
-import { collection, query, orderBy, addDoc, serverTimestamp } from "firebase/firestore"
+import { useAuth, useFirestore, useCollection } from "@/firebase"
+import { collection, query, orderBy } from "firebase/firestore"
 
 import { useToast } from "@/hooks/use-toast"
 import { useState, useMemo } from "react"
@@ -21,6 +21,7 @@ export default function NotificationsPage() {
   const { profile } = useUser()
   const role = profile?.role || "admin"
   const db = useFirestore()
+  const auth = useAuth()
   const { toast } = useToast()
   const [isSending, setIsSending] = useState(false)
 
@@ -37,30 +38,41 @@ export default function NotificationsPage() {
     const message = formData.get("message") as string
 
     try {
-      const consultantId = recipient === 'ALL' ? 'broadcast' : recipient
-      
-      const notificationData = {
-        subject,
-        message,
-        type: "manual",
-        status: "Sent",
-        timestamp: serverTimestamp()
+      const currentUser = auth.currentUser
+      if (!currentUser) {
+        toast({ variant: "destructive", title: "Not Authenticated", description: "Please sign in again to send notifications." })
+        return
       }
 
-      // 1. Write to consultant's private notifications
-      if (consultantId !== 'broadcast') {
-        await addDoc(collection(db, "consultantNotifications", consultantId, "notifications"), notificationData)
-      }
-
-      // 2. Log in system logs
-      await addDoc(collection(db, "systemLogs"), {
-        recipient: consultantId === 'broadcast' ? "All Consultants" : recipient,
-        type: subject,
-        status: "Sent",
-        timestamp: serverTimestamp()
+      const idToken = await currentUser.getIdToken()
+      const response = await fetch("/api/email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ recipient, subject, message }),
       })
 
-      toast({ title: "Notification Sent", description: "The message has been dispatched and logged." })
+      const result = await response.json().catch(() => null)
+
+      if (!response.ok) {
+        toast({
+          variant: "destructive",
+          title: "Send Failed",
+          description: result?.error || "Could not dispatch notification.",
+        })
+        return
+      }
+
+      const failed = result?.failed ?? 0
+      toast({
+        title: failed > 0 ? "Notification Partially Sent" : "Notification Sent",
+        description:
+          failed > 0
+            ? `${result.sent} email(s) sent, ${failed} failed. Check system logs for details.`
+            : `Email dispatched to ${recipient === "ALL" ? "all consultants" : recipient} and logged.`,
+      })
       ;(e.target as HTMLFormElement).reset()
     } catch (err) {
       toast({ variant: "destructive", title: "Send Failed", description: "Could not dispatch notification." })

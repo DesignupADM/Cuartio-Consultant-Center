@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useCallback, memo } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { 
@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button"
 import { 
   FileText, 
   Search, 
+  SearchX,
   Download,
   Upload,
   Filter,
@@ -28,6 +29,7 @@ import {
   CalendarDays,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   Settings2,
   X,
   MoreHorizontal,
@@ -51,6 +53,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { COUNTRIES, formatCountryDisplay, COUNTRY_CODE_MAP } from "@/lib/countries"
 import { adminCvInsightExtraction, AdminCvInsightExtractionOutput } from "@/ai/flows/admin-cv-insight-extraction"
 import { CsvImportDialog } from "./csv-import-dialog"
+import { formatDistanceToNow } from "date-fns"
 
 import { useToast } from "@/hooks/use-toast"
 import { Separator } from "@/components/ui/separator"
@@ -64,6 +67,7 @@ import {
   DropdownMenuItem
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useFirestore, usePaginatedCollection, useCollection } from "@/firebase"
 import { collection, query, where, doc, updateDoc, writeBatch, getDocs, serverTimestamp, limit, startAfter } from "firebase/firestore"
 import { getFunctions, httpsCallable } from "firebase/functions"
@@ -106,6 +110,235 @@ export type Consultant = {
   avatarUrl?: string;
   aiInsight?: AdminCvInsightExtractionOutput;
   customAnswers?: Record<string, any>;
+}
+
+const STATUS_META: Record<string, { dot: string; chip: string }> = {
+  verified: {
+    dot: "bg-emerald-500",
+    chip: "border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+  },
+  pending: {
+    dot: "bg-amber-500",
+    chip: "border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  },
+  rejected: {
+    dot: "bg-rose-500",
+    chip: "border-rose-500/25 bg-rose-500/10 text-rose-700 dark:text-rose-400",
+  },
+}
+
+const getInitials = (firstName?: string, lastName?: string) =>
+  `${firstName?.trim().charAt(0) ?? ""}${lastName?.trim().charAt(0) ?? ""}`.toUpperCase() || "?"
+
+const getLastUpdateDate = (value?: string): Date | null => {
+  if (!value) return null
+  const date = new Date(value)
+  return isNaN(date.getTime()) ? null : date
+}
+
+type VisibleColumns = {
+  phone: boolean
+  years: boolean
+  sector: boolean
+  language: boolean
+  lastUpdate: boolean
+  status: boolean
+}
+
+type ConsultantRowProps = {
+  consultant: Consultant
+  selected: boolean
+  visibleColumns: VisibleColumns
+  index: number
+  onRowClick: (consultant: Consultant) => void
+  onToggleSelect: (id: string) => void
+  onOpenCV: (consultant: Consultant, e?: React.MouseEvent) => void
+}
+
+const ConsultantTableRow = memo(function ConsultantTableRow({
+  consultant,
+  selected,
+  visibleColumns,
+  index,
+  onRowClick,
+  onToggleSelect,
+  onOpenCV,
+}: ConsultantRowProps) {
+  const statusMeta = STATUS_META[consultant.status] ?? {
+    dot: "bg-muted-foreground/50",
+    chip: "border-border bg-muted/50 text-muted-foreground",
+  }
+  const lastUpdate = getLastUpdateDate(consultant.lastUpdate)
+  const yearsValid = Number.isFinite(consultant.years) && consultant.years > 0
+
+  return (
+    <TableRow
+      className={`group cursor-pointer border-b border-border/40 transition-all duration-200 animate-in fade-in fill-mode-both ${
+        selected
+          ? "bg-primary/[0.05] hover:bg-primary/[0.06] shadow-[inset_3px_0_0_0_var(--color-primary)]"
+          : "hover:bg-primary/[0.035]"
+      }`}
+      style={{ animationDelay: `${Math.min(index, 12) * 30}ms` }}
+      onClick={() => onRowClick(consultant)}
+    >
+      <TableCell onClick={(e) => e.stopPropagation()} className="pl-6">
+        <Checkbox
+          checked={selected}
+          onCheckedChange={() => onToggleSelect(consultant.id)}
+          className="border-muted-foreground/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+        />
+      </TableCell>
+      <TableCell className="py-3.5">
+        <div className="flex items-center gap-3.5">
+          <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-xl border border-primary/15 bg-linear-to-br from-primary/15 via-primary/5 to-accent/25 shadow-xs transition-transform duration-300 group-hover:scale-[1.06]">
+            <span className="absolute inset-0 flex items-center justify-center font-headline text-xs font-black tracking-wide text-primary">
+              {getInitials(consultant.firstName, consultant.lastName)}
+            </span>
+            {consultant.avatarUrl && (
+              <Image
+                src={consultant.avatarUrl}
+                alt=""
+                width={40}
+                height={40}
+                loading="lazy"
+                className="absolute inset-0 h-full w-full object-cover"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none"
+                }}
+              />
+            )}
+          </div>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate font-headline text-sm font-semibold text-foreground transition-colors group-hover:text-primary">
+              {consultant.firstName} {consultant.lastName}
+            </span>
+            <span className="truncate font-mono text-[11px] text-muted-foreground/80">{consultant.email}</span>
+          </div>
+        </div>
+      </TableCell>
+      <TableCell>
+        <span className="text-[13px] font-medium text-foreground/85">{consultant.profession || "—"}</span>
+      </TableCell>
+      {visibleColumns.status && (
+        <TableCell>
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${statusMeta.chip}`}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${statusMeta.dot}`} />
+            {consultant.status || "pending"}
+          </span>
+        </TableCell>
+      )}
+      {visibleColumns.sector && (
+        <TableCell>
+          {consultant.sector ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-muted/60 px-2.5 py-1 text-[11px] font-semibold text-foreground/80">
+              <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+              {consultant.sector}
+            </span>
+          ) : (
+            <span className="text-muted-foreground/40">—</span>
+          )}
+        </TableCell>
+      )}
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <Globe className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" />
+          <span className="text-[13px] font-medium text-foreground/85">
+            {consultant.country ? formatCountryDisplay(consultant.country) : "—"}
+          </span>
+        </div>
+      </TableCell>
+      {visibleColumns.years && (
+        <TableCell className="text-center">
+          {yearsValid ? (
+            <div className="mx-auto flex w-fit flex-col items-center gap-1.5">
+              <span className="text-[13px] font-black leading-none tabular-nums text-foreground">{consultant.years}y</span>
+              <span className="block h-[3px] w-12 overflow-hidden rounded-full bg-muted/80">
+                <span
+                  className="block h-full rounded-full bg-linear-to-r from-primary to-accent"
+                  style={{ width: `${Math.min(100, (consultant.years / 30) * 100)}%` }}
+                />
+              </span>
+            </div>
+          ) : (
+            <span className="text-muted-foreground/40">—</span>
+          )}
+        </TableCell>
+      )}
+      {visibleColumns.lastUpdate && (
+        <TableCell>
+          {lastUpdate ? (
+            <span
+              className="whitespace-nowrap text-[11px] font-medium tabular-nums text-muted-foreground"
+              title={lastUpdate.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}
+            >
+              {formatDistanceToNow(lastUpdate, { addSuffix: true })}
+            </span>
+          ) : (
+            <span className="text-muted-foreground/40">—</span>
+          )}
+        </TableCell>
+      )}
+      <TableCell className="pr-6 text-right" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={(e) => onOpenCV(consultant, e)}
+            className="h-8 w-8 rounded-full text-muted-foreground transition-all duration-200 hover:bg-primary/10 hover:text-primary disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+            title={consultant.cvUrl ? "Open CV" : "No CV uploaded"}
+            disabled={!consultant.cvUrl}
+          >
+            <FileText className="h-4 w-4" />
+          </Button>
+          <ChevronRight className="h-4 w-4 text-muted-foreground/30 transition-all duration-200 group-hover:translate-x-0.5 group-hover:text-primary" />
+        </div>
+      </TableCell>
+    </TableRow>
+  )
+})
+
+function LoadingTableRows({ visibleColumns }: { visibleColumns: VisibleColumns }) {
+  const cells = [
+    true, // identity
+    true, // profession
+    visibleColumns.status,
+    visibleColumns.sector,
+    true, // region
+    visibleColumns.years,
+    visibleColumns.lastUpdate,
+    true, // actions
+  ]
+  return (
+    <>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <TableRow key={`skeleton-${i}`} className="border-b border-border/40">
+          <TableCell className="pl-6">
+            <Skeleton className="h-4 w-4 rounded-[4px]" />
+          </TableCell>
+          {cells.map((show, idx) => (
+            <TableCell key={idx}>
+              {idx === 0 && show ? (
+                <div className="flex items-center gap-3.5">
+                  <Skeleton className="h-10 w-10 rounded-xl" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-3.5 w-40" />
+                    <Skeleton className="h-3 w-56" />
+                  </div>
+                </div>
+              ) : show ? (
+                <Skeleton className="h-3.5 w-20" />
+              ) : null}
+            </TableCell>
+          ))}
+          <TableCell className="pr-6 text-right">
+            <Skeleton className="ml-auto h-8 w-12 rounded-full" />
+          </TableCell>
+        </TableRow>
+      ))}
+    </>
+  )
 }
 
 export function AdminDirectory() {
@@ -221,12 +454,14 @@ export function AdminDirectory() {
   })
 
   const filteredConsultants = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return consultants || []
     return (consultants || []).filter(c => 
-      `${c.firstName} ${c.lastName} ${c.profession} ${c.country} ${c.sector}`.toLowerCase().includes(searchQuery.toLowerCase())
+      `${c.firstName} ${c.lastName} ${c.profession} ${c.country} ${c.sector}`.toLowerCase().includes(q)
     )
   }, [consultants, searchQuery])
 
-  const handleOpenCV = (consultant: Consultant, e?: React.MouseEvent) => {
+  const handleOpenCV = useCallback((consultant: Consultant, e?: React.MouseEvent) => {
     e?.stopPropagation()
     if (consultant.cvUrl) {
       window.open(consultant.cvUrl, '_blank')
@@ -237,7 +472,7 @@ export function AdminDirectory() {
         variant: "destructive"
       })
     }
-  }
+  }, [toast])
 
   const handleExport = async () => {
     try {
@@ -251,7 +486,7 @@ export function AdminDirectory() {
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement("a");
       link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `connectflow_consultants_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute("download", `curatio_consultants_${new Date().toISOString().split('T')[0]}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -263,15 +498,16 @@ export function AdminDirectory() {
     }
   }
 
-  const itemVariants = {
-    hidden: { opacity: 0, y: 10 },
-    show: { opacity: 1, y: 0 }
-  }
-
-  const handleRowClick = (consultant: Consultant) => {
+  const handleRowClick = useCallback((consultant: Consultant) => {
     setActiveConsultant(consultant)
     setIsDetailsOpen(true)
-  }
+  }, [])
+
+  const handleToggleSelection = useCallback((id: string) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    )
+  }, [])
 
   const handleGenerateInsight = async () => {
     if (!activeConsultant) return
@@ -295,13 +531,6 @@ export function AdminDirectory() {
     } finally {
       setIsInsightLoading(false)
     }
-  }
-
-  const toggleSelection = (id: string, e?: React.MouseEvent) => {
-    e?.stopPropagation()
-    setSelectedIds(prev => 
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    )
   }
 
   const toggleAll = () => {
@@ -669,130 +898,84 @@ export function AdminDirectory() {
         )}
       </div>
 
-      <div className="rounded-2xl border border-border/60 bg-card/40 shadow-xl overflow-hidden backdrop-blur-md">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader className="bg-muted/30">
-            <TableRow className="hover:bg-transparent border-b border-border/50">
-              <TableHead className="w-[50px] pl-6">
-                <Checkbox 
-                  checked={selectedIds.length === filteredConsultants.length && filteredConsultants.length > 0}
-                  onCheckedChange={toggleAll}
-                  className="border-muted-foreground/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                />
-              </TableHead>
-              <TableHead className="w-[300px] font-bold text-xs uppercase tracking-wider text-muted-foreground py-4">
-                Expert Identity
-              </TableHead>
-              <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Expertise Area</TableHead>
-              {visibleColumns.status && <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Status</TableHead>}
-              {visibleColumns.sector && <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Industrial Sector</TableHead>}
-              <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Region</TableHead>
-              {visibleColumns.years && <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground text-center">Exp.</TableHead>}
-              {visibleColumns.lastUpdate && <TableHead className="font-bold text-xs uppercase tracking-wider text-muted-foreground">Last Indexed</TableHead>}
-              <TableHead className="text-right pr-6 font-bold text-xs uppercase tracking-wider text-muted-foreground">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredConsultants.map((consultant) => (
-              <TableRow 
-                key={consultant.id} 
-                className={`hover:bg-muted/30 transition-colors cursor-pointer group border-b ${selectedIds.includes(consultant.id) ? 'bg-primary/5' : ''}`}
-                onClick={() => handleRowClick(consultant)}
-              >
-                  <TableCell onClick={(e) => e.stopPropagation()} className="pl-6">
-                  <Checkbox 
-                    checked={selectedIds.includes(consultant.id)}
-                    onCheckedChange={() => toggleSelection(consultant.id)}
-                    className="border-muted-foreground/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
-                  />
-                </TableCell>
-                <TableCell className="py-4">
-                  <div className="flex items-center gap-4">
-                      <div className="h-10 w-10 rounded-xl bg-linear-to-br from-primary/20 to-primary/5 flex items-center justify-center overflow-hidden shrink-0 border border-primary/10 shadow-xs">
-                        {consultant.avatarUrl ? (
-                        <Image
-                          src={consultant.avatarUrl}
-                          alt={`${consultant.firstName} ${consultant.lastName}`}
-                          width={40}
-                          height={40}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <User className="h-5 w-5 text-primary/60" />
-                      )}
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="font-bold text-sm text-foreground group-hover:text-primary transition-colors truncate">
-                        {consultant.firstName} {consultant.lastName}
-                      </span>
-                      <span className="text-[11px] text-muted-foreground truncate">{consultant.email}</span>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell className="font-medium text-[13px] text-foreground/80">{consultant.profession}</TableCell>
-                {visibleColumns.status && (
-                  <TableCell>
-                    <Badge 
-                      variant={consultant.status === 'verified' ? 'default' : 'outline'}
-                      className={`text-[10px] uppercase tracking-wider ${consultant.status === 'verified' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-200' : ''}`}
-                    >
-                      {consultant.status}
-                    </Badge>
-                  </TableCell>
-                )}
-                {visibleColumns.sector && <TableCell><Badge variant="secondary" className="bg-muted/50 font-normal text-[11px] h-5">{consultant.sector}</Badge></TableCell>}
-                <TableCell>
-                  <div className="flex items-center gap-2">
-                      <Globe className="h-3 w-3 text-muted-foreground" />
-                      <span className="text-[13px] font-medium">{consultant.country ? formatCountryDisplay(consultant.country) : ""}</span>
-                  </div>
-                </TableCell>
-                {visibleColumns.years && <TableCell className="text-center font-bold text-[13px] text-primary/80 leading-none">{consultant.years}y</TableCell>}
-                {visibleColumns.lastUpdate && <TableCell className="text-[11px] font-mono text-muted-foreground whitespace-nowrap">{consultant.lastUpdate}</TableCell>}
-                <TableCell className="text-right pr-6" onClick={(e) => e.stopPropagation()}>
-                  <div className="flex justify-end gap-1.5">
-                    <Button 
-                      size="icon" 
-                      variant="ghost" 
-                      onClick={(e) => handleOpenCV(consultant, e)}
-                      className="h-8 w-8 hover:bg-primary/10 hover:text-primary transition-all duration-200"
-                      title="View Expert CV"
-                      disabled={!consultant.cvUrl}
-                    >
-                      <FileText className={`h-4 w-4 ${consultant.cvUrl ? 'text-primary' : 'text-muted-foreground/30'}`} />
-                    </Button>
-                    <Button 
-                      size="icon" 
-                      variant="ghost" 
-                      onClick={(e) => { e.stopPropagation(); toggleSelection(consultant.id); }}
-                      className={`h-8 w-8 transition-all duration-200 ${selectedIds.includes(consultant.id) ? 'bg-primary/10 text-primary' : 'hover:bg-muted text-muted-foreground/30 hover:text-foreground'}`}
-                      title="Select Profile"
-                    >
-                      <CircleCheck className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-          </Table>
+      {!loading && filteredConsultants.length === 0 ? (
+        <div className="rounded-2xl border border-border/60 bg-card/40 shadow-xl backdrop-blur-md">
+          <EmptyState
+            icon={SearchX}
+            title="No Consultants Found"
+            description="No profiles match your current search or filters. Try adjusting your criteria."
+            action={
+              <Button variant="outline" onClick={() => setSearchQuery("")}>
+                <X className="mr-2 h-4 w-4" />
+                Clear Search
+              </Button>
+            }
+            className="py-20"
+          />
         </div>
-        
-        {hasMore && (
-            <div className="p-4 border-t flex justify-center bg-muted/10">
+      ) : (
+        <div className="rounded-2xl border border-border/60 bg-card/40 shadow-xl overflow-hidden backdrop-blur-md">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-muted/40">
+                <TableRow className="hover:bg-transparent border-b border-border/60">
+                  <TableHead className="w-[50px] pl-6">
+                    <Checkbox 
+                      checked={selectedIds.length === filteredConsultants.length && filteredConsultants.length > 0}
+                      onCheckedChange={toggleAll}
+                      className="border-muted-foreground/30 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                    />
+                  </TableHead>
+                  <TableHead className="w-[300px] font-black text-[11px] uppercase tracking-widest text-muted-foreground py-4">
+                    Expert
+                  </TableHead>
+                  <TableHead className="font-black text-[11px] uppercase tracking-widest text-muted-foreground">Expertise</TableHead>
+                  {visibleColumns.status && <TableHead className="font-black text-[11px] uppercase tracking-widest text-muted-foreground">Status</TableHead>}
+                  {visibleColumns.sector && <TableHead className="font-black text-[11px] uppercase tracking-widest text-muted-foreground">Sector</TableHead>}
+                  <TableHead className="font-black text-[11px] uppercase tracking-widest text-muted-foreground">Region</TableHead>
+                  {visibleColumns.years && <TableHead className="text-center font-black text-[11px] uppercase tracking-widest text-muted-foreground">Exp.</TableHead>}
+                  {visibleColumns.lastUpdate && <TableHead className="font-black text-[11px] uppercase tracking-widest text-muted-foreground">Last Update</TableHead>}
+                  <TableHead className="pr-6 text-right font-black text-[11px] uppercase tracking-widest text-muted-foreground">
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading && (!consultants || consultants.length === 0) ? (
+                  <LoadingTableRows visibleColumns={visibleColumns} />
+                ) : (
+                  filteredConsultants.map((consultant, index) => (
+                    <ConsultantTableRow
+                      key={consultant.id}
+                      consultant={consultant}
+                      selected={selectedIds.includes(consultant.id)}
+                      visibleColumns={visibleColumns}
+                      index={index}
+                      onRowClick={handleRowClick}
+                      onToggleSelect={handleToggleSelection}
+                      onOpenCV={handleOpenCV}
+                    />
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          
+          {hasMore && (
+            <div className="p-4 border-t border-border/50 flex justify-center bg-muted/10">
               <Button 
                 variant="outline" 
                 onClick={loadMore} 
                 disabled={loadingMore}
-                className="w-full sm:w-auto bg-primary/10"
+                className="w-full sm:w-auto bg-primary/10 hover:bg-primary/20"
               >
                 {loadingMore && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Load More Consultants
               </Button>
             </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       <Sheet open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
         <SheetContent side="right" className="sm:max-w-2xl overflow-y-auto flex flex-col">

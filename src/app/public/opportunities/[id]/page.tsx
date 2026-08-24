@@ -168,7 +168,7 @@ export default function PublicOpportunityPage({ params }: { params: Promise<{ id
               {opportunity.title}
             </h1>
             <p className="text-xl text-white/90 max-w-2xl font-medium drop-shadow-md">
-              Join the Curatio Foundation in making a global impact through expert consultancy.
+              Join the Curatio International Foundation in making a global impact through expert consultancy.
             </p>
           </div>
         </div>
@@ -346,7 +346,7 @@ export default function PublicOpportunityPage({ params }: { params: Promise<{ id
               </div>
               <div className="flex gap-3">
                 <CheckCircle2 className="h-5 w-5 text-accent shrink-0" />
-                <p className="text-sm">Direct access to Curatio Foundation&apos;s mission leaders.</p>
+                <p className="text-sm">Direct access to Curatio International Foundation&apos;s mission leaders.</p>
               </div>
             </CardContent>
           </Card>
@@ -359,14 +359,14 @@ export default function PublicOpportunityPage({ params }: { params: Promise<{ id
           <div className="flex items-center gap-3">
             <Image 
               src="/logo-color.png" 
-              alt="CIF Logo" 
+              alt="Curatio Logo" 
               width={120} 
               height={30} 
               className="h-6 w-auto dark:hidden" 
             />
             <Image 
               src="/logo-white.png" 
-              alt="CIF Logo" 
+              alt="Curatio Logo" 
               width={120} 
               height={30} 
               className="h-6 w-auto hidden dark:block" 

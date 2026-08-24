@@ -7,7 +7,7 @@ import { FirebaseClientProvider } from "@/firebase";
 import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
-  title: 'CIF Consultant Management',
+  title: 'Curatio Consultant Center',
   description: 'Curatio International Foundation - Consultant Management Portal.',
   icons: {
     icon: '/Small_Logo_White.svg',

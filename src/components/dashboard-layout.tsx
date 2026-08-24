@@ -58,14 +58,14 @@ function DashboardShell({
             <Link href={`/dashboard?role=${role}`} className="flex items-center gap-3 group-data-[collapsible=icon]:hidden transition-all hover:opacity-80">
               <Image 
                 src="/logo-color.png" 
-                alt="CIF Logo" 
+                alt="Curatio Logo" 
                 width={160} 
                 height={40} 
                 className="h-8 w-auto dark:hidden" 
               />
               <Image 
                 src="/logo-white.png" 
-                alt="CIF Logo" 
+                alt="Curatio Logo" 
                 width={160} 
                 height={40} 
                 className="h-8 w-auto hidden dark:block" 
@@ -75,14 +75,14 @@ function DashboardShell({
               <Link href={`/dashboard?role=${role}`} className="flex items-center justify-center transition-all hover:opacity-80 shrink-0">
                 <Image 
                   src="/Small_Logo_White.svg" 
-                  alt="CIF Icon" 
+                  alt="Curatio Icon" 
                   width={32}
                   height={32}
                   className="h-8 w-8 object-contain dark:hidden" 
                 />
                 <Image 
                   src="/small_logo_dark.svg" 
-                  alt="CIF Icon" 
+                  alt="Curatio Icon" 
                   width={32}
                   height={32}
                   className="h-8 w-8 object-contain hidden dark:block" 

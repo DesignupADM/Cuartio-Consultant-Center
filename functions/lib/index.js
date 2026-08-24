@@ -23,7 +23,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.exportConsultants = exports.onApplicantWritten = exports.onOpportunityWritten = exports.onConsultantWritten = void 0;
+exports.completeAdminRegistration = exports.inviteAdmin = exports.exportConsultants = exports.onApplicantWritten = exports.onOpportunityWritten = exports.onConsultantWritten = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 admin.initializeApp();
@@ -58,7 +58,7 @@ async function updateSummaries() {
         safeCount(db.collection("consultantProfiles").where("createdAt", ">=", previousWindowStart).where("createdAt", "<", currentWindowStart)),
         db.collection("consultantProfiles").orderBy("createdAt", "desc").limit(100).get().catch(() => ({ docs: [] })),
         db.collection("opportunities").orderBy("createdAt", "desc").limit(100).get().catch(() => ({ docs: [] })),
-        db.collectionGroup("applicants").limit(200).get().catch(() => ({ docs: [] }))
+        db.collectionGroup("applicants").orderBy("appliedDate", "desc").limit(200).get().catch(() => ({ docs: [] }))
     ]);
     // Aggregate region and sector data for charts
     const regionCounts = {};
@@ -188,10 +188,85 @@ exports.exportConsultants = functions.https.onCall(async (data, context) => {
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'User is not logged in.');
     }
+    const adminCheck = await isAdmin(context.auth.uid);
+    if (!adminCheck) {
+        throw new functions.https.HttpsError('permission-denied', 'Administrator access required.');
+    }
     const querySnapshot = await db.collection('consultantProfiles').get();
     const profiles = querySnapshot.docs.map(doc => doc.data());
     const csvContent = ["Name,Last Name,Email,Country,Profession,Years Experience,Sector,Status"].join(",") + "\n"
         + profiles.map(c => `${c.firstName || ''},${c.lastName || ''},${c.email || ''},${c.country || ''},${c.profession || ''},${c.years || ''},${c.sector || ''},${c.status || ''}`).join("\n");
     return { csv: csvContent };
+});
+// 3. Admin Invite & Registration Activation
+async function isAdmin(uid) {
+    var _a;
+    try {
+        const user = await admin.auth().getUser(uid);
+        if (((_a = user.customClaims) === null || _a === void 0 ? void 0 : _a.admin) === true) {
+            return true;
+        }
+        const snap = await db.collection('adminRoles').doc(uid).get();
+        return snap.exists;
+    }
+    catch (_b) {
+        return false;
+    }
+}
+// Creates a pending admin invite document at adminRoles/email:{email}.
+// Only existing administrators may invite new administrators.
+exports.inviteAdmin = functions.https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User is not logged in.');
+    }
+    const adminCheck = await isAdmin(context.auth.uid);
+    if (!adminCheck) {
+        throw new functions.https.HttpsError('permission-denied', 'Only administrators can invite new administrators.');
+    }
+    const email = typeof (data === null || data === void 0 ? void 0 : data.email) === 'string' ? data.email.toLowerCase().trim() : '';
+    const firstName = typeof (data === null || data === void 0 ? void 0 : data.firstName) === 'string' ? data.firstName.trim() : '';
+    const lastName = typeof (data === null || data === void 0 ? void 0 : data.lastName) === 'string' ? data.lastName.trim() : '';
+    if (!email) {
+        throw new functions.https.HttpsError('invalid-argument', 'An email address is required.');
+    }
+    await db.collection('adminRoles').doc(`email:${email}`).set({
+        firstName,
+        lastName,
+        email,
+        role: 'admin',
+        enabled: false,
+        invitedAt: admin.firestore.FieldValue.serverTimestamp(),
+        invitedBy: context.auth.uid,
+    });
+    return { ok: true, email };
+});
+// Called by a freshly registered user. If a pending invite exists for the
+// user's email, mints the adminRole document and the admin custom claim.
+exports.completeAdminRegistration = functions.https.onCall(async (_data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'User is not logged in.');
+    }
+    const uid = context.auth.uid;
+    const email = (context.auth.token.email || '').toLowerCase().trim();
+    if (!email) {
+        throw new functions.https.HttpsError('invalid-argument', 'Email address is not available on this account.');
+    }
+    const inviteRef = db.collection('adminRoles').doc(`email:${email}`);
+    const inviteSnap = await inviteRef.get();
+    if (!inviteSnap.exists) {
+        return { role: 'consultant' };
+    }
+    const invite = inviteSnap.data();
+    await db.collection('adminRoles').doc(uid).set({
+        firstName: (invite === null || invite === void 0 ? void 0 : invite.firstName) || '',
+        lastName: (invite === null || invite === void 0 ? void 0 : invite.lastName) || '',
+        email,
+        role: 'admin',
+        enabled: true,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    await admin.auth().setCustomUserClaims(uid, { admin: true });
+    await inviteRef.delete();
+    return { role: 'admin' };
 });
 //# sourceMappingURL=index.js.map

@@ -12,6 +12,8 @@
 
 # testing
 /coverage
+/playwright-report/
+/test-results/
 
 # next.js
 /.next/
@@ -23,6 +25,7 @@
 # misc
 .DS_Store
 *.pem
+dev_server.log
 
 # debug
 npm-debug.log*
@@ -39,10 +42,12 @@ next-env.d.ts
 
 .genkit/*
 .env*
+!.env.example
 
 # firebase
 firebase-debug.log
 firestore-debug.log
+*.backup
 
 # functions
 /functions/node_modules/

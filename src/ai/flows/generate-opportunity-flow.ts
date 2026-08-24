@@ -26,7 +26,7 @@ const prompt = ai.definePrompt({
   name: 'generateOpportunityPrompt',
   input: { schema: GenerateOpportunityInputSchema },
   output: { schema: GenerateOpportunityOutputSchema },
-  prompt: `You are an expert recruitment and project manager for the Curatio Foundation, which connects high-level consultants to humanitarian and infrastructure projects.
+  prompt: `You are an expert recruitment and project manager for the Curatio International Foundation, which connects high-level consultants to humanitarian and infrastructure projects.
 
 Based on the Title and optional context, generate a professional project landing page.
 

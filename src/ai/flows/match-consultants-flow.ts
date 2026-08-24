@@ -42,7 +42,7 @@ const prompt = ai.definePrompt({
   name: 'matchConsultantsPrompt',
   input: { schema: MatchConsultantsInputSchema },
   output: { schema: MatchConsultantsOutputSchema },
-  prompt: `You are an expert recruitment agent for the Curatio Foundation. 
+  prompt: `You are an expert recruitment agent for the Curatio International Foundation. 
 Compare the following Opportunity Description with the list of Consultants.
 Rank them based on their professional experience, sector expertise, and years in the field.
 

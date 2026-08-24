@@ -28,8 +28,9 @@ import {
   ChevronDownSquare,
   X
 } from "lucide-react"
-import { useFirestore, useCollection, useDoc } from "@/firebase"
+import { useFirestore, useCollection, useDoc, useFirebaseApp } from "@/firebase"
 import { collection, query, where, doc, setDoc, updateDoc, deleteDoc, addDoc, orderBy, runTransaction } from "firebase/firestore"
+import { getFunctions, httpsCallable } from "firebase/functions"
 import { errorEmitter } from "@/firebase/error-emitter"
 import { FirestorePermissionError } from "@/firebase/errors"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -41,6 +42,7 @@ export default function AdminPanelPage() {
   const role = profile?.role || "admin"
   const { toast } = useToast()
   const db = useFirestore()
+  const functions = getFunctions(useFirebaseApp())
   const [isSaving, setIsSaving] = useState(false)
   const [newQuestionType, setNewQuestionType] = useState<"text" | "textarea" | "select">("text")
 
@@ -183,16 +185,13 @@ export default function AdminPanelPage() {
         })
         toast({ title: "Admin Updated" })
       } else {
-        const emailKey = `email:${cleanEmail}`
-        await setDoc(doc(db, "adminRoles", emailKey), {
-          ...adminForm,
+        const inviteAdmin = httpsCallable(functions, "inviteAdmin")
+        await inviteAdmin({
           email: cleanEmail,
-          role: 'admin',
-          enabled: true,
-          isPending: true,
-          createdAt: new Date().toISOString()
+          firstName: adminForm.firstName,
+          lastName: adminForm.lastName
         })
-        toast({ title: "Admin Added" })
+        toast({ title: "Admin Invited", description: `${cleanEmail} can now register as an administrator.` })
       }
       setIsAdminDialogOpen(false)
     } catch {
@@ -353,7 +352,7 @@ export default function AdminPanelPage() {
                       <div className="space-y-4">
                         <div className="space-y-2">
                           <Label htmlFor="supportEmail" className="font-bold uppercase text-[10px] tracking-widest">Support Email</Label>
-                          <Input id="supportEmail" name="supportEmail" defaultValue={settings?.supportEmail ?? "support@cif.org"} />
+                          <Input id="supportEmail" name="supportEmail" defaultValue={settings?.supportEmail ?? "support@curatio.com"} />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="dbLimit" className="font-bold uppercase text-[10px] tracking-widest">DB Export Limit</Label>

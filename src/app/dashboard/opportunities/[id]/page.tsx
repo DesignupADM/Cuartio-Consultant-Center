@@ -40,7 +40,7 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { matchConsultants, type MatchConsultantsOutput } from "@/ai/flows/match-consultants-flow"
 import { Separator } from "@/components/ui/separator"
-import { useFirestore, useCollection } from "@/firebase"
+import { useAuth, useFirestore, useCollection } from "@/firebase"
 import { collection, updateDoc, doc, query, orderBy, getDoc } from "firebase/firestore"
 import { type Opportunity } from "@/firebase/firestore/opportunities"
 import { errorEmitter } from "@/firebase/error-emitter"
@@ -65,6 +65,7 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
   const { id } = React.use(params)
   const { toast } = useToast()
   const db = useFirestore()
+  const auth = useAuth()
   const router = useRouter()
 
   const [opportunityState, setOpportunityState] = useState<OpportunityState>(() => ({
@@ -151,7 +152,7 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
     }
   }
 
-  const updateApplicantStatus = (applicantId: string, newStatus: Applicant['status']) => {
+  const updateApplicantStatus = (applicantId: string, newStatus: Applicant['status'], applicantEmail?: string) => {
     const appRef = doc(db, "opportunities", id, "applicants", applicantId)
     
     updateDoc(appRef, { status: newStatus })
@@ -160,6 +161,9 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
           title: "Status Updated", 
           description: `Candidate moved to ${newStatus === 'accepted' ? 'Shortlisted' : newStatus}.` 
         })
+        if (applicantEmail && (newStatus === 'accepted' || newStatus === 'declined')) {
+          void sendStatusEmail(applicantEmail, newStatus)
+        }
       })
       .catch(async (err) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -168,6 +172,31 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
           requestResourceData: { status: newStatus }
         }))
       })
+  }
+
+  const sendStatusEmail = async (applicantEmail: string, newStatus: Applicant['status']) => {
+    try {
+      const currentUser = auth.currentUser
+      if (!currentUser || !opportunity) return
+
+      const idToken = await currentUser.getIdToken()
+      const shortlisted = newStatus === 'accepted'
+      const subject = `Application update: ${opportunity.title}`
+      const message = shortlisted
+        ? `Dear applicant,\n\nWe are pleased to inform you that your application for "${opportunity.title}" has been shortlisted. Our team will contact you with the next steps.\n\nCuratio International Foundation`
+        : `Dear applicant,\n\nThank you for your interest in "${opportunity.title}". After careful review, we regret to inform you that your application was not selected for this project.\n\nCuratio International Foundation`
+
+      await fetch("/api/email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ recipientEmail: applicantEmail, subject, message }),
+      })
+    } catch (err) {
+      console.error("Failed to send status email", err)
+    }
   }
 
   const handleAIMatch = async () => {
@@ -386,7 +415,7 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
                               size="sm" 
                               variant="ghost" 
                               className="h-8 w-8 p-0 text-emerald-600 hover:bg-emerald-50 rounded-full" 
-                              onClick={(e) => { e.stopPropagation(); updateApplicantStatus(app.id, 'accepted'); }}
+                              onClick={(e) => { e.stopPropagation(); updateApplicantStatus(app.id, 'accepted', app.email); }}
                             >
                               <UserCheck className="h-4 w-4" />
                             </Button>
@@ -394,7 +423,7 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
                               size="sm" 
                               variant="ghost" 
                               className="h-8 w-8 p-0 text-rose-600 hover:bg-rose-50 rounded-full" 
-                              onClick={(e) => { e.stopPropagation(); updateApplicantStatus(app.id, 'declined'); }}
+                              onClick={(e) => { e.stopPropagation(); updateApplicantStatus(app.id, 'declined', app.email); }}
                             >
                               <UserX className="h-4 w-4" />
                             </Button>
@@ -617,7 +646,7 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
                           <Button
                             size="sm"
                             className="flex-1 min-w-[110px] bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[10px] uppercase tracking-wider py-2.5 rounded-xl border-none transition-all shadow-sm"
-                            onClick={() => selectedConsultantId && updateApplicantStatus(selectedConsultantId, 'accepted')}
+                            onClick={() => selectedConsultantId && updateApplicantStatus(selectedConsultantId, 'accepted', applicants?.find(a => a.id === selectedConsultantId)?.email)}
                           >
                             <UserCheck className="h-3.5 w-3.5 mr-1.5" /> Shortlist
                           </Button>
@@ -625,7 +654,7 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
                             size="sm"
                             variant="outline"
                             className="flex-1 min-w-[110px] text-rose-600 hover:bg-rose-50 hover:text-rose-700 border-rose-200 font-bold text-[10px] uppercase tracking-wider py-2.5 rounded-xl transition-all"
-                            onClick={() => selectedConsultantId && updateApplicantStatus(selectedConsultantId, 'declined')}
+                            onClick={() => selectedConsultantId && updateApplicantStatus(selectedConsultantId, 'declined', applicants?.find(a => a.id === selectedConsultantId)?.email)}
                           >
                             <UserX className="h-3.5 w-3.5 mr-1.5" /> Decline
                           </Button>

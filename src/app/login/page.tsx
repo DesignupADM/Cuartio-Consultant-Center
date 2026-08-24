@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useAuth, useFirestore } from "@/firebase"
+import { useAuth, useFirestore, useFirebaseApp } from "@/firebase"
 import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail } from "firebase/auth"
 import { getUserProfile, createUserProfile } from "@/firebase/firestore/users"
 import { useUser } from "@/firebase/auth/use-user"
@@ -17,12 +17,13 @@ import Link from "next/link"
 import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { doc, getDoc, setDoc, deleteDoc } from "firebase/firestore"
+import { getFunctions, httpsCallable } from "firebase/functions"
 
 export default function LoginPage() {
   const router = useRouter()
   const auth = useAuth()
   const db = useFirestore()
+  const functions = getFunctions(useFirebaseApp())
   const { user, loading: authLoading } = useUser()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
@@ -89,27 +90,32 @@ export default function LoginPage() {
     }
   }, [user, authLoading, db, router])
 
+  const tryActivateInvitedAdmin = async (): Promise<"admin" | "consultant"> => {
+    try {
+      const completeAdminRegistration = httpsCallable(functions, "completeAdminRegistration")
+      const result = await completeAdminRegistration({})
+      const role = (result.data as { role?: string } | null)?.role
+      return role === "admin" ? "admin" : "consultant"
+    } catch (err) {
+      console.warn("Admin invitation check failed, continuing as consultant:", err)
+      return "consultant"
+    }
+  }
+
   const handleGoogleLogin = async () => {
     setIsLoading(true)
     const provider = new GoogleAuthProvider()
     
     try {
       const result = await signInWithPopup(auth, provider)
-      const cleanEmail = result.user.email?.toLowerCase().trim() || ""
-      const pendingAdminRef = doc(db, "adminRoles", `email:${cleanEmail}`)
-      const pendingAdminSnap = await getDoc(pendingAdminRef)
-      
-      if (pendingAdminSnap.exists()) {
-        const adminData = pendingAdminSnap.data()
-        await setDoc(doc(db, "adminRoles", result.user.uid), {
-          firstName: adminData.firstName || result.user.displayName?.split(" ")[0] || "",
-          lastName: adminData.lastName || result.user.displayName?.split(" ").slice(1).join(" ") || "",
-          email: cleanEmail,
-          role: "admin",
-          enabled: true,
-          createdAt: new Date().toISOString()
+      const activation = await tryActivateInvitedAdmin()
+
+      if (activation === "admin") {
+        await result.user.getIdToken(true)
+        toast({
+          title: "Registration Successful",
+          description: "Welcome back, Administrator.",
         })
-        await deleteDoc(pendingAdminRef)
         window.location.href = "/dashboard?role=admin"
       } else {
         const profile = await getUserProfile(db, result.user.uid)
@@ -194,21 +200,21 @@ export default function LoginPage() {
                 <div className="mb-4">
                   <Image 
                     src="/logo-color.png" 
-                    alt="CIF Logo" 
+                    alt="Curatio Logo" 
                     width={240} 
                     height={60} 
                     className="h-10 w-auto dark:hidden" 
                   />
                   <Image 
                     src="/logo-white.png" 
-                    alt="CIF Logo" 
+                    alt="Curatio Logo" 
                     width={240} 
                     height={60} 
                     className="h-10 w-auto hidden dark:block" 
                   />
                 </div>
                 <h1 className="text-2xl font-bold tracking-tight text-primary font-headline text-center">Welcome Back</h1>
-                <p className="text-muted-foreground mt-2 text-center text-sm">Sign in to your CIF account</p>
+                <p className="text-muted-foreground mt-2 text-center text-sm">Sign in to your Curatio account</p>
               </div>
 
               <Tabs defaultValue="consultant" className="w-full">
@@ -276,7 +282,7 @@ export default function LoginPage() {
                       <Input 
                         id="admin-email" 
                         type="email" 
-                        placeholder="admin@connectflow.pro" 
+                        placeholder="admin@curatio.com" 
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required 
@@ -379,7 +385,7 @@ export default function LoginPage() {
               />
               <div className="absolute inset-0 flex items-center justify-center p-8 z-10">
                 <div className="space-y-6 text-center bg-background/80 backdrop-blur-md p-8 rounded-2xl border shadow-xl max-w-md mx-auto">
-                  <h2 className="text-3xl font-bold tracking-tight text-primary font-headline">CIF Consultant Network</h2>
+                  <h2 className="text-3xl font-bold tracking-tight text-primary font-headline">Curatio Consultant Network</h2>
                   <p className="text-base text-muted-foreground">
                     Join our global network of healthcare experts and connect with impactful projects worldwide.
                   </p>
