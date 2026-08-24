@@ -208,6 +208,7 @@ Dev tooling: `npm run genkit:dev` / `genkit:watch` boot the Genkit Developer UI 
 - Whitelisted fields only (see `route.ts`); unknown fields are ignored.
 - `email` (required) is normalized and used as the document id — **upsert semantics** make retries idempotent.
 - Records default to `status: "pending"` and are tagged `source: "webhook"`; writes are chunked at 400 docs/batch.
+- **Full account registration** — add `"createAccount": true` to a record to also create the Firebase Auth user (reusing the existing account if the email is known), mint the `consultantRoles` doc, key the profile by UID, and email a password setup link via Resend (the link is returned in the response if email could not be sent).
 - Each run is logged to `systemLogs` and visible in the Notification Center.
 
 ---

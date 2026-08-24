@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { createHmac, timingSafeEqual } from "crypto"
 import { FieldValue } from "firebase-admin/firestore"
-import { adminDb } from "@/lib/firebase-admin"
+import { adminDb, adminAuth } from "@/lib/firebase-admin"
+import { sendEmail, isResendConfigured } from "@/lib/email"
 
 const MAX_BODY_SIZE = 1 * 1024 * 1024 // 1MB
 
@@ -130,7 +131,10 @@ function normalizeConsultant(raw: unknown): NormalizedConsultant | null {
   return consultant as NormalizedConsultant
 }
 
-function extractPayload(body: unknown): { consultants: NormalizedConsultant[]; invalid: number } {
+function extractPayload(body: unknown): {
+  entries: { consultant: NormalizedConsultant; createAccount: boolean }[]
+  invalid: number
+} {
   const invalid: number[] = []
   let raws: unknown[] = []
 
@@ -145,17 +149,19 @@ function extractPayload(body: unknown): { consultants: NormalizedConsultant[]; i
     }
   }
 
-  const consultants: NormalizedConsultant[] = []
+  const entries: { consultant: NormalizedConsultant; createAccount: boolean }[] = []
   raws.forEach((raw, index) => {
     const normalized = normalizeConsultant(raw)
     if (normalized) {
-      consultants.push(normalized)
+      const createAccount =
+        typeof raw === "object" && raw !== null && (raw as Record<string, unknown>).createAccount === true
+      entries.push({ consultant: normalized, createAccount })
     } else {
       invalid.push(index)
     }
   })
 
-  return { consultants, invalid: invalid.length }
+  return { entries, invalid: invalid.length }
 }
 
 export async function GET() {
@@ -164,7 +170,7 @@ export async function GET() {
     ok: true,
     service: "curatio-consultants-webhook",
     configured: Boolean(secret),
-    hint: "POST consultant profiles to this endpoint. Sign requests with HMAC-SHA256 using WEBHOOK_SECRET or pass Authorization: Bearer <WEBHOOK_SECRET>.",
+    hint: "POST consultant profiles to this endpoint. Sign requests with HMAC-SHA256 using WEBHOOK_SECRET or pass Authorization: Bearer <WEBHOOK_SECRET>. Add \"createAccount\": true to a record to also create a Firebase Auth login and email a password setup link.",
   })
 }
 
@@ -187,9 +193,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 })
   }
 
-  const { consultants, invalid } = extractPayload(body)
+  const { entries, invalid } = extractPayload(body)
 
-  if (consultants.length === 0) {
+  if (entries.length === 0) {
     return NextResponse.json(
       {
         ok: false,
@@ -204,10 +210,101 @@ export async function POST(request: Request) {
   let created = 0
   let updated = 0
   const errors: { email: string; error: string }[] = []
+  const accounts: {
+    email: string
+    uid: string
+    created: boolean
+    passwordResetLink?: string
+  }[] = []
 
+  const continueUrl = `${new URL(request.url).origin}/login`
+  const accountEntries = entries.filter((e) => e.createAccount)
+  const plainEntries = entries.filter((e) => !e.createAccount)
+
+  // --- Account-backed registration (createAccount: true) ---
+  for (const { consultant } of accountEntries) {
+    try {
+      let uid: string
+      let accountCreated = false
+
+      try {
+        const existing = await adminAuth.getUserByEmail(consultant.email)
+        uid = existing.uid
+      } catch {
+        const newUser = await adminAuth.createUser({
+          email: consultant.email,
+          emailVerified: false,
+        })
+        uid = newUser.uid
+        accountCreated = true
+      }
+
+      const roleRef = adminDb.collection("consultantRoles").doc(uid)
+      const profileRef = adminDb.collection("consultantProfiles").doc(uid)
+      const profileSnap = await profileRef.get()
+
+      const roleExists = (await roleRef.get()).exists
+      if (!roleExists) {
+        await roleRef.set({ enabled: true })
+      }
+
+      if (profileSnap.exists) {
+        await profileRef.update({
+          ...consultant,
+          id: uid,
+          status: consultant.status ?? profileSnap.data()?.status ?? "pending",
+          source: "webhook",
+          updatedAt: FieldValue.serverTimestamp(),
+        })
+        updated += 1
+      } else {
+        await profileRef.set({
+          ...consultant,
+          id: uid,
+          status: consultant.status ?? "pending",
+          source: "webhook",
+          createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
+        })
+        created += 1
+      }
+
+      let passwordResetLink: string | undefined
+      let linkDelivered = false
+
+      if (isResendConfigured()) {
+        try {
+          passwordResetLink = await adminAuth.generatePasswordResetLink(consultant.email, {
+            url: continueUrl,
+          })
+          const firstName = typeof consultant.firstName === "string" ? consultant.firstName : "there"
+          await sendEmail(
+            consultant.email,
+            "Welcome to the Curatio Consultant Center — set up your account",
+            `Dear ${firstName},\n\nAn account has been created for you on the Curatio Consultant Center.\n\nSet up your password to access your dashboard:\n${passwordResetLink}\n\nThis link expires in 24 hours.\n\nCuratio International Foundation`
+          )
+          linkDelivered = true
+        } catch (emailErr) {
+          console.error("Welcome email failed:", emailErr)
+        }
+      }
+
+      accounts.push({
+        email: consultant.email,
+        uid,
+        created: accountCreated,
+        ...(linkDelivered ? {} : { passwordResetLink }),
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Account creation failed"
+      errors.push({ email: consultant.email, error: message })
+    }
+  }
+
+  // --- Directory-only records (createAccount omitted) ---
   const chunks: NormalizedConsultant[][] = []
-  for (let i = 0; i < consultants.length; i += 400) {
-    chunks.push(consultants.slice(i, i + 400))
+  for (let i = 0; i < plainEntries.length; i += 400) {
+    chunks.push(plainEntries.slice(i, i + 400).map((e) => e.consultant))
   }
 
   for (const chunk of chunks) {
@@ -269,10 +366,11 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    received: consultants.length + invalid,
+    received: entries.length + invalid,
     invalid,
     created,
     updated,
+    accounts,
     errors,
   })
 }

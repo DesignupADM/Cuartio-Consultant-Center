@@ -68,10 +68,8 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useFirestore, usePaginatedCollection, useCollection } from "@/firebase"
+import { useFirestore, useAuth, usePaginatedCollection, useCollection } from "@/firebase"
 import { collection, query, where, doc, updateDoc, writeBatch, getDocs, serverTimestamp, limit, startAfter } from "firebase/firestore"
-import { getFunctions, httpsCallable } from "firebase/functions"
-import { useFirebaseApp } from "@/firebase"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -343,7 +341,7 @@ function LoadingTableRows({ visibleColumns }: { visibleColumns: VisibleColumns }
 
 export function AdminDirectory() {
   const db = useFirestore()
-  const app = useFirebaseApp()
+  const auth = useAuth()
 
   const [filters, setFilters] = useState({ country: '', sector: '', language: '', minYears: '' })
   const [isMessageDialogOpen, setIsMessageDialogOpen] = useState(false)
@@ -476,25 +474,42 @@ export function AdminDirectory() {
 
   const handleExport = async () => {
     try {
-      toast({ title: "Generating Export", description: "Requesting export from server..." })
-      
-      const functions = getFunctions(app);
-      const exportConsultants = httpsCallable(functions, 'exportConsultants');
-      const result = await exportConsultants();
-      const csvContent = "data:text/csv;charset=utf-8," + (result.data as any).csv;
-      
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `curatio_consultants_${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
+      toast({ title: "Generating Export", description: "Preparing your CSV on the server..." })
+
+      const currentUser = auth.currentUser
+      if (!currentUser) {
+        toast({ variant: "destructive", title: "Not Authenticated", description: "Please sign in again to export data." })
+        return
+      }
+
+      const idToken = await currentUser.getIdToken()
+      const response = await fetch("/api/export/consultants", {
+        headers: { Authorization: `Bearer ${idToken}` },
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => null)
+        throw new Error(data?.error || `Export failed (${response.status})`)
+      }
+
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.download = `curatio_consultants_${new Date().toISOString().split('T')[0]}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
       toast({ title: "Export Complete", description: "Your download should begin shortly." })
     } catch (err) {
       console.error("Export failed:", err)
-      toast({ variant: "destructive", title: "Export Failed", description: "An error occurred generating the export." })
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: err instanceof Error ? err.message : "An error occurred generating the export.",
+      })
     }
   }
 
