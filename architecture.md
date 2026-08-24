@@ -1,278 +1,265 @@
-# ConnectFlow Pro - Architectural Design
+# Curatio Consultant Center — Technical Architecture
 
-This document details the system architecture of ConnectFlow Pro (also known as the Curatio Consultant Center), focusing on the integration of **Firebase Firestore**, **Next.js App Router (15.x)**, and the **Firebase Genkit** framework for running generative AI flows.
+This document is the single source of truth for the technical direction of the **Curatio Consultant Center**, the consultant-management platform of the **Curatio International Foundation**. It describes the system architecture, data model, security posture, AI services, integrations, and operational procedures.
 
 ---
 
-## 1. System Overview
+## 1. Product Overview
 
-ConnectFlow Pro is a dual-portal application designed to manage a global network of high-level consultant experts and match them to humanitarian and infrastructure projects.
+The Curatio Consultant Center is a dual-portal application that connects a global network of high-level consultants (legal, infrastructure, energy, governance, etc.) with humanitarian and infrastructure projects.
 
-### Core Stack
-*   **Frontend & Server Components**: Next.js 15.5 (React 19) with TailwindCSS and Framer Motion.
-*   **Database & Security**: Cloud Firestore with robust collection schemas and Role-Based Access Control (RBAC) security rules.
-*   **Authentication**: Firebase Authentication.
-*   **AI Orchestration**: Firebase Genkit (1.28.x) powered by the Google GenAI plugin (`googleai/gemini-2.5-flash`).
+- **Admin portal** — directory management, verification, opportunities, AI-assisted matchmaking, analytics, email notifications.
+- **Consultant portal** — profile management, verified expert network, opportunity browsing and applications.
+- **Public surface** — shareable public opportunity pages where anyone can view a project and apply in a guided flow.
+
+### Branding
+
+| Token | Value |
+|---|---|
+| Organization | Curatio International Foundation |
+| Product | Curatio Consultant Center |
+| Email domain | `curatio.com` |
+| Primary color | `#2666A6` (trustworthy blue) |
+| Accent color | `#3CDDDD` (turquoise) |
+| Background | `#F0F2F4` (light blue-gray) |
+
+---
+
+## 2. Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 15.5 (App Router, React 19, Turbopack) |
+| Language | TypeScript (strict) |
+| Styling | Tailwind CSS v4, tailwindcss-animate, shadcn/radix-ui components |
+| Fonts | Inter Variable (body) + Outfit Variable (headlines), self-hosted via Fontsource |
+| Editor | TinyMCE 8 (opportunity descriptions, lazy-loaded) |
+| Charts | Recharts 3 (analytics) |
+| Auth | Firebase Authentication (email/password + Google) |
+| Database | Cloud Firestore with RBAC security rules (v2) |
+| Files | Firebase Storage (CV PDFs, avatars) |
+| Backend | Firebase Cloud Functions (Node 20, Admin SDK) |
+| AI | Firebase Genkit 1.28 + Google GenAI plugin (`googleai/gemini-2.5-flash`) |
+| Email | Resend (transactional + broadcast email) |
+| Hosting | Firebase App Hosting (Next.js) |
+| Testing | Playwright (smoke tests, E2E mock mode) |
+
+---
+
+## 3. System Architecture
 
 ```mermaid
 graph TD
-    Client[Next.js Client Components] <-->|Hooks / Transactions| Firestore[(Cloud Firestore)]
-    Client <-->|Server Actions| Genkit[Genkit AI Flows]
+    Client[Next.js Client Components] <-->|SDK / Hooks| Firestore[(Cloud Firestore)]
+    Client <-->|REST + ID token| API[Next.js API Routes]
+    Client -->|HTTPS Callable| CF[Cloud Functions]
+    CF -->|Admin SDK| Firestore
+    CF -->|Auth Admin| FA[Firebase Auth]
+    API -->|verifyIdToken| FA
+    API -->|Admin SDK| Firestore
+    API -->|HTTP| Resend[Resend Email]
+    Webhook[External Webhook Senders] -->|HMAC / Bearer| API
+    Client -->|Server Actions| Genkit[Genkit Flows]
     Genkit -->|Gemini API| Gemini[Gemini 2.5 Flash]
     Firestore -.->|Security Rules Validation| Client
+    CF -->|onWrite triggers| Stats[( _system/dashboard_stats )]
+```
+
+### Request paths
+
+1. **Client SDK (rules-governed)** — dashboards read/write Firestore directly through the web SDK; `firestore.rules` enforces RBAC and attribute-level permissions.
+2. **Next.js API routes** — server-side privileged operations verified by Firebase ID tokens (or webhook secrets), executed with the Admin SDK:
+   - `POST /api/email` — admin-only email dispatch via Resend.
+   - `POST /api/webhooks/consultants` — signed ingestion of consultant records into the directory.
+3. **Cloud Functions** — background triggers and privileged callables:
+   - Firestore `onWrite` triggers that maintain the precomputed analytics document.
+   - `exportConsultants`, `inviteAdmin`, `completeAdminRegistration` callables.
+4. **Genkit flows** — AI operations executed server-side as Next.js server actions; the Gemini API key never reaches the client.
+
+---
+
+## 4. Application Structure
+
+```
+src/
+├── app/
+│   ├── layout.tsx                     # Root layout, metadata, providers
+│   ├── page.tsx                       # Redirects to /login (no landing page)
+│   ├── login/                         # Login + password reset + Google sign-in
+│   ├── register/                      # Consultant registration + admin invite activation
+│   ├── dashboard/                     # Protected dual-portal dashboard
+│   │   ├── admin/                     # Settings, admins, fields, registration questions
+│   │   ├── analytics/                 # Executive analytics (precomputed stats)
+│   │   ├── directory/                 # Consultant directory (admin) + [id] detail
+│   │   ├── notifications/             # Notification center + system logs
+│   │   ├── opportunities/             # CRUD, applicants pipeline, AI matchmaking
+│   │   └── profile/                   # Profile management
+│   ├── public/opportunities/[id]/     # Public project page + apply flow
+│   └── api/
+│       ├── email/route.ts             # Resend dispatch (admin-verified)
+│       └── webhooks/consultants/route.ts  # Signed directory ingestion webhook
+├── ai/
+│   ├── genkit.ts                      # Genkit + Gemini initialization
+│   ├── dev.ts                         # Genkit Developer UI bootstrap
+│   └── flows/                         # CV insight, opportunity generator, matchmaking
+├── components/
+│   ├── dashboard/                     # Feature components (directory, opportunities…)
+│   ├── editor/                        # TinyMCE wrapper + dynamic FormBuilder
+│   └── ui/                            # shadcn/radix primitives
+├── firebase/
+│   ├── config.ts                      # Web SDK config from NEXT_PUBLIC_* env vars
+│   ├── provider.tsx                   # App/Auth/Firestore/Storage context
+│   ├── auth/use-user.tsx              # Central user+profile resolution (E2E mock aware)
+│   └── firestore/                     # useCollection / useDoc / usePaginatedCollection
+├── lib/
+│   ├── email.ts                       # Resend client (server-side)
+│   ├── firebase-admin.ts              # Admin SDK singleton + isAdminUser()
+│   ├── countries.ts, image-utils.ts   # Country maps, client-side image compression
+└── hooks/, ...
+functions/src/index.ts                 # Cloud Functions (triggers + callables)
+tests/                                 # Playwright smoke tests
 ```
 
 ---
 
-## 2. AI Tool Architecture (Firebase Genkit)
-
-The generative AI features are implemented as **Genkit Flows** executing as Server Actions on the Next.js server-side, securing API keys from client exposure.
-
-### Genkit Initializer
-*   **File Path**: [genkit.ts](file:///Users/elene/Documents/Curatio%20Consultatnt/src/ai/genkit.ts)
-*   **Configuration**: Initializes the Genkit instance using `@genkit-ai/google-genai` and configures the environment variable `GEMINI_API_KEY` for execution.
-*   **Default Model**: `googleai/gemini-2.5-flash`.
-
-### Developer Dashboard Setup
-*   **File Path**: [dev.ts](file:///Users/elene/Documents/Curatio%20Consultatnt/src/ai/dev.ts)
-*   **Purpose**: Bootstraps the local Genkit Developer UI which allows developers to run, inspect, and benchmark flows in isolation.
-*   **NPM Scripts**:
-    *   `npm run genkit:dev` — Starts Genkit CLI using `tsx` on `src/ai/dev.ts`.
-    *   `npm run genkit:watch` — Runs Genkit CLI with hot-reloading.
-
----
-
-## 3. Detail of Created AI Tools
-
-### A. AI-Powered CV Insight Tool
-Extracts and indexes resume structure automatically when an administrator reviews a consultant profile.
-
-*   **Flow Module**: [admin-cv-insight-extraction.ts](file:///Users/elene/Documents/Curatio%20Consultatnt/src/ai/flows/admin-cv-insight-extraction.ts)
-*   **Input Schema**:
-    ```typescript
-    {
-      cvDataUri?: string; // Base64 data URI of the CV PDF
-      cvUrl?: string;     // Public HTTP URL to download the CV PDF
-    }
-    ```
-*   **Output Schema**:
-    ```typescript
-    {
-      summary: string;              // Concise summary of the consultant's CV
-      skills: string[];             // Array of key skills extracted
-      experienceHighlights: string[]; // List of significant experiences / achievements
-      qualifications: string[];     // List of academic or professional degrees
-    }
-    ```
-*   **Implementation Flow**:
-    1.  If a public `cvUrl` is provided instead of direct file data, the server issues a `fetch` request, retrieves the array buffer, and encodes the PDF contents into a base64 Data URI.
-    2.  The flow calls `extractCvInsightsPrompt` with the Data URI as a media input `{{media url=cvDataUri}}`.
-    3.  Gemini parses the PDF structural data and constructs a type-safe object conforming to the output schema.
-*   **UI Integration**: Integrated in the consultant directory dashboard [admin-directory.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/components/dashboard/directory/admin-directory.tsx). The flow is initiated on row click. Once computed, the result is saved directly back to the database:
-    ```typescript
-    const result = await adminCvInsightExtraction({ cvUrl: consultant.cvUrl });
-    const userRef = doc(db, "consultantProfiles", consultant.id);
-    await updateDoc(userRef, { aiInsight: result });
-    ```
-
----
-
-### B. Opportunity Generator Tool
-Assists administrators in creating professional, detailed project descriptions based on minimal input (e.g. project title and basic bullet points).
-
-*   **Flow Module**: [generate-opportunity-flow.ts](file:///Users/elene/Documents/Curatio%20Consultatnt/src/ai/flows/generate-opportunity-flow.ts)
-*   **Input Schema**:
-    ```typescript
-    {
-      title: string;       // Proposed project title or role name
-      context?: string;    // Raw description, notes, or bullet points
-    }
-    ```
-*   **Output Schema**:
-    ```typescript
-    {
-      title: string;              // Refined, professional title
-      description: string;        // Compelling and detailed project brief
-      tags: string[];             // Array of up to 5 skill/sector tags
-      suggestedDuration: string;  // A realistic timeline estimate (e.g. '6 Months')
-      suggestedRegion: string;    // Associated region or 'Global'
-    }
-    ```
-*   **UI Integration**: Found in the "Post New Opportunity" dialog within [admin-opportunities.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/components/dashboard/opportunities/admin-opportunities.tsx). The "AI Auto-Fill" button fetches the generated details and populates form states dynamically before publishing.
-
----
-
-### C. Consultant Matchmaking Tool
-Ranks and evaluates all candidates who applied for a specific opportunity against its project brief and core requirements.
-
-*   **Flow Module**: [match-consultants-flow.ts](file:///Users/elene/Documents/Curatio%20Consultatnt/src/ai/flows/match-consultants-flow.ts)
-*   **Input Schema**:
-    ```typescript
-    {
-      opportunityDescription: string; // Brief of the active project
-      consultants: Array<{
-        id: string;
-        name: string;
-        profession: string;
-        sector: string;
-        bio: string;
-        years: number;
-      }>;
-    }
-    ```
-*   **Output Schema**:
-    ```typescript
-    {
-      matches: Array<{
-        consultantId: string;
-        matchScore: number;     // Evaluation score from 0-100 indicating fit
-        reasoning: string;      // Summary justification explaining the score
-      }>;
-    }
-    ```
-*   **UI Integration**: Triggered from the project applicant management screen in [admin-opportunities.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/components/dashboard/opportunities/admin-opportunities.tsx). Renders an "AI Match Insights" card showing sorted match scores and qualitative reasoning summaries.
-
----
-
-## 4. Data Architecture & Firestore Schema
-
-Data is stored in Cloud Firestore under structured paths matching the guidelines in [backend.json](file:///Users/elene/Documents/Curatio%20Consultatnt/docs/backend.json).
-
-### Database Tree Map
+## 5. Data Model & Firestore Schema
 
 ```
-/adminRoles/{userId}
-   └─ (Admin access token reference)
-
-/consultantRoles/{userId}
-   └─ (Consultant access token reference)
-
-/consultantProfiles/{userId}   --> UserProfile
+/adminRoles/{userId}                    # Admin docs; invites stored at email:{email}
+/consultantRoles/{userId}               # Consultant role markers
+/consultantProfiles/{userId|email}      # UserProfile (uid or webhook email as id)
    ├─ firstName, lastName, email, country, profession, sector, years, bio, status
+   ├─ status: pending | verified | rejected
    ├─ aiInsight: { summary, skills, experienceHighlights, qualifications }
-   └─ customAnswers: { [fieldId]: value } // Aggregated from opportunity applications
-
-/opportunities/{opportunityId} --> Opportunity
-   ├─ title, location, region, duration, deadline, description, tags, status
-   ├─ formSchema: [ { id, label, type, required, options, isSystem } ] // Dynamic form fields
-   └─ /applicants/{userId}     --> ApplicantData (Subcollection)
-         └─ uid, name, email, location, status, appliedDate, cvUrl, answers: { [fieldId]: value }
-
-/opportunityFields/{fieldId}   --> Global Form Field Registry
-   └─ label, type, required, options, createdAt
-
-/settings/registration         --> Global Registration Config
-   └─ /questions/{questionId}: { label, type, required, options, order }
+   ├─ customAnswers: { [fieldId]: value }
+   └─ source: "webhook" | "registration"
+/opportunities/{opportunityId}          # Opportunity (status: open | closed | draft)
+   ├─ title, location, region, duration, deadline, tags, description/content
+   ├─ formSchema: [ { id, label, type, required, options, isSystem } ]
+   └─ /applicants/{userId}             # { uid, name, email, status, appliedDate, cvUrl, answers }
+/opportunityFields/{fieldId}            # Global reusable form-field registry
+/settings/registration/questions/{id}   # Registration questionnaire config
+/settings/{docId}                       # Global settings (supportEmail, …)
+/systemLogs/{logId}                     # Append-only audit log
+/_system/dashboard_stats                # Precomputed analytics document (Cloud Functions)
+/consultantNotifications/{uid}/notifications/{id}   # In-app notifications
+/skills /languages /areasOfExpertise /areasOfPractice /sectorsOfExperience
+/disciplines /degrees /regions /countries   # Reference registries
 ```
 
-### Access Authorization Logic (`firestore.rules`)
-Firestore enforces granular restrictions before operations reach database documents:
-1.  **Administrative Access**: Checked via `isAdmin()`, which validates custom Auth claims or checks if the user's UID exists in the `/adminRoles` collection.
-2.  **Resource Ownership**: Validated via `isOwner(userId)`, matching `request.auth.uid` against document identifiers.
-3.  **Path Controls**:
-    *   Consultants can view their own profile and create/read applications.
-    *   Administrators have read/write access to all tables, profiles, and opportunities, including running operations like verification and status updates.
+---
+
+## 6. Security Architecture
+
+### 6.1 Firestore Rules (`firestore.rules`)
+
+- **RBAC** — `isAdmin()` resolves via the `admin: true` custom claim **or** an `adminRoles/{uid}` document; `isOwner()` matches `request.auth.uid` to the document id.
+- **No self-elevation** — `adminRoles` can only be created/updated/deleted by an existing admin.
+- **Attribute-level locks** — consultants may update their own profile but can never modify `status`, `aiInsight`, or `role`. On create, `status` must be `pending`, `role` must be `consultant`, and `aiInsight` is forbidden.
+- **Application lifecycle** — new applications must be created with `status: 'applied'`; only admins may update/delete them.
+- **Public surface** — `opportunities` docs are publicly readable (`get: if true`) to support share links; listing still requires auth. `opportunityFields` and registration questions are publicly readable for the apply form.
+- **Append-only audit** — `systemLogs` supports `create` only; `update/delete` are denied.
+- **Deny by default** — any collection without an explicit match is inaccessible.
+
+### 6.2 Admin Invites (Cloud Functions)
+
+Self-registration cannot mint admins. The invite flow is:
+
+1. An existing admin calls `inviteAdmin({ email })` — creates a pending invite at `adminRoles/email:{email}` with `enabled: false` and audit fields.
+2. The invited person registers (email/password or Google); the client calls `completeAdminRegistration`.
+3. The callable verifies an invite exists for the authenticated email, creates `adminRoles/{uid}`, mints the `admin: true` custom claim, deletes the invite, and the client refreshes its ID token.
+
+### 6.3 API Route Protection
+
+- `/api/email` requires a valid Firebase ID token whose user resolves to an admin (`isAdminUser`).
+- `/api/webhooks/consultants` requires either an HMAC-SHA256 signature (`X-Curatio-Signature: sha256=<hex>`) computed over the raw body with `WEBHOOK_SECRET`, or `Authorization: Bearer <WEBHOOK_SECRET>`. Comparisons are constant-time and the endpoint rejects all requests (401) when `WEBHOOK_SECRET` is unset.
+- Secrets and keys live in environment variables only; never in the repository or client bundle.
 
 ---
 
-## 5. Auxiliary Architecture Utilities
+## 7. AI Architecture (Firebase Genkit)
 
-### Client-Side Image Compression
-*   **File Path**: [image-utils.ts](file:///Users/elene/Documents/Curatio%20Consultatnt/src/lib/image-utils.ts)
-*   **Implementation**: Utilizes an HTML5 Canvas API context to resize high-resolution images down to a maximum layout dimension (default `800px`) and convert the output to a compressed JPEG Blob (default quality `0.8`). Used to optimize consultant profile avatar uploads.
+Three Genkit flows run as Next.js server actions; `GEMINI_API_KEY` stays server-side.
 
-### Firebase Reactive Hooks
-*   **File Paths**:
-    *   [use-paginated-collection.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/firebase/firestore/use-paginated-collection.tsx): Handles client-side cursor pagination for massive lists like directories and project records.
-    *   [use-collection.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/firebase/firestore/use-collection.tsx): Listens dynamically to collection changes (e.g. applications pipeline).
+| Flow | Purpose | Input → Output |
+|---|---|---|
+| `admin-cv-insight-extraction` | Extract structure from CV PDFs when an admin reviews a profile | `{ cvUrl }` → `{ summary, skills, experienceHighlights, qualifications }`, saved to `aiInsight` |
+| `generate-opportunity-flow` | Draft professional project briefs from minimal notes | `{ title, context }` → `{ title, description, tags, suggestedDuration, suggestedRegion }` |
+| `match-consultants-flow` | Rank applicants against a project brief | `{ opportunityDescription, consultants[] }` → `{ matches: [{ consultantId, matchScore, reasoning }] }` |
 
----
-
-## 6. Core Application Workflows
-
-### Public Project Sharing & Distribution
-To seamlessly connect consultants with active projects, the platform features integrated public link distribution:
-*   **Automatic URL Generation**: Upon publishing a new opportunity via the admin dashboard, the system generates a unique public URL (`/public/opportunities/[id]`) and surfaces it in a success dialog for immediate sharing.
-*   **Quick Share Actions**: Every project card on the admin dashboard includes a one-click "Link" button. This utilizes the browser's `navigator.clipboard` API to copy the public URL, streamlining the external distribution of projects to consultants and other interested parties.
+Dev tooling: `npm run genkit:dev` / `genkit:watch` boot the Genkit Developer UI for isolated flow testing.
 
 ---
 
-## 7. Dynamic Forms Architecture
+## 8. Email & Notifications (Resend)
 
-The platform supports robust dynamic form generation and custom data collection both for general consultant registration and specific project applications.
-
-### Global Opportunity Fields Registry
-*   **Purpose**: Prevents duplication of data columns across the database by allowing admins to define reusable custom fields (e.g., "Preferred Salary", "Portfolio URL") for project applications.
-*   **Admin Management**: Located in the Admin Panel (`/dashboard/admin`), the "Project Fields" tab provides full CRUD control over the `/opportunityFields` Firestore collection.
-
-### Dynamic Form Builder
-*   **File Path**: [FormBuilder.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/components/editor/FormBuilder.tsx)
-*   **Integration**: Used in `/dashboard/opportunities/new` and `edit` routes.
-*   **Behavior**: 
-    1.  **System Locked Fields**: Fields like Name, Email, and CV are locked (`isSystem: true`) and cannot be removed to ensure core data integrity.
-    2.  **Custom Field Selection**: Admins can pick fields from the Global Opportunity Fields Registry or create completely new ones (which automatically sync to the global registry).
-    3.  **Schema Storage**: The customized schema is saved as an array of `FormField` objects directly on the `Opportunity` document.
-
-### Consultant Data Aggregation
-*   **Application Submission**: The public-facing `/public/opportunities/[id]` page dynamically renders the form based on the opportunity's schema.
-*   **Data Flow**: When a consultant applies, their custom field answers and uploaded CV URL are saved to the local `ApplicantData` subcollection.
-*   **Profile Synchronization**: To ensure custom answers are searchable and visible globally, the `applyToOpportunity` function in [opportunities.ts](file:///Users/elene/Documents/Curatio%20Consultatnt/src/firebase/firestore/opportunities.ts) executes a Firestore batch write to merge the new answers into the consultant's main `/consultantProfiles/{uid}` document under a `customAnswers` object.
-*   **Directory Visibility**: The central `AdminDirectory` component seamlessly parses these `customAnswers`, cross-referencing keys against the global registry to display a rich, dynamically generated "Project Application Data" view in the consultant's side-panel profile.
+- **Sender**: `RESEND_FROM_EMAIL` (default `Curatio International Foundation <notifications@curatio.com>`).
+- **Notification Center** — admins send messages to one consultant or all consultants (`ALL`); the API route resolves recipient emails server-side, sends via Resend, writes `consultantNotifications` docs and `systemLogs` entries.
+- **Applicant lifecycle** — shortlisting/declining a candidate emails them automatically.
+- **Bulk sends** are chunked (50/batch) with per-recipient failure reporting.
+- Firebase Auth password-reset emails are served by Firebase (custom SMTP must be configured in the Firebase console to brand them from `curatio.com`).
 
 ---
 
-## 8. CSV Import & Bulk Actions Workflows
+## 9. Webhook — Consultant Directory Ingestion
 
-To support bulk migration and management of expert networks, the directory features clean CSV uploading and batch administrative actions.
+`POST /api/webhooks/consultants` accepts a single object, an array, or `{ consultants: [...] }`:
 
-### A. CSV Import Wizard & Dynamic Schema Mapping
-*   **Component**: [csv-import-dialog.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/components/dashboard/directory/csv-import-dialog.tsx)
-*   **Workflow Steps**:
-    1.  **File Parsing**: Performs client-side CSV parsing.
-    2.  **Schema Alignment**: Automatically maps CSV headers to Core Profile attributes or existing custom fields.
-    3.  **Unrecognized Columns**: Identifies CSV headers not present in the database. Provides options to:
-        - **Skip**: Do not import this column.
-        - **Create as Registration Question**: Registers the field in `/settings/registration/questions`.
-        - **Create as Project Field**: Registers the field in `/opportunityFields`.
-        - **Map to Existing**: Maps to any core/custom property.
-    4.  **Confirm & Preview**: Generates a tabular preview showing data normalization (number parsing, country name mapping).
-    5.  **Batch Write**: Commits transactions to Firestore. Large datasets are chunked into safe batches of 150 profiles (creating up to 300 documents in `/consultantProfiles` and `/consultantRoles` to stay under the 500-operation limit).
-    6.  **Refresh Trigger**: Increments a counter that forces the parent directory component to re-fetch the paginated directory.
-
-### B. Bulk Operations
-*   **Component**: [admin-directory.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/components/dashboard/directory/admin-directory.tsx)
-*   **Supported Actions**:
-    - **Bulk Verify**: Batches updates to `status: 'verified'` across selected UIDs.
-    - **Bulk Delete**: Prompts for confirmation and deletes selected profiles from `/consultantProfiles` via a `writeBatch` write. Role records `/consultantRoles` are bypassed during client-side deletion to align with permission rules (`allow update, delete: if false`).
+- Whitelisted fields only (see `route.ts`); unknown fields are ignored.
+- `email` (required) is normalized and used as the document id — **upsert semantics** make retries idempotent.
+- Records default to `status: "pending"` and are tagged `source: "webhook"`; writes are chunked at 400 docs/batch.
+- Each run is logged to `systemLogs` and visible in the Notification Center.
 
 ---
 
-## 9. Executive Analytics & Reporting Flow
+## 10. UI/UX Design System
 
-The platform synthesizes raw operational data into high-level business intelligence to support executive decision-making.
-
-### A. Real-Time Data Aggregation
-*   **Component / Page**: [page.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/app/dashboard/analytics/page.tsx)
-*   **Data Aggregation Sources**:
-    - **Consultant Supply**: Listens to `/consultantProfiles` to analyze sector expertise, geographical distribution, and profile completion rates.
-    - **Opportunities**: Queries `/opportunities` to track active, draft, and closed mandates.
-    - **Applicant Pipeline**: Performs a Firestore `collectionGroup` query across all `/applicants` subcollections. This allows flattening applications across all distinct opportunities into a single stream to evaluate review velocity, shortlist ratios, and rejection rates.
-*   **Interactive Visualizations**:
-    - **Geographical Reach**: Bar chart mapping active consultant locations.
-    - **Pipeline Funnel**: Funnel conversion displaying transition rates from initial application to review, shortlist, and project assignment.
-    - **Competency Matrix**: Radar chart plotting supply vs demand (comparing custom opportunity requirement tags against registered consultant sector experience).
-    - **Executive Insights**: Generates automated recommendations based on supply gaps (e.g., highlighting sector areas where applicant demand exceeds consultant supply).
+- **Palette** — brand blue `--primary` (#2666A6 family) and turquoise `--accent` (#3CDDDD family) over a cool light background; full dark-mode equivalents in `globals.css`.
+- **Typography** — Outfit for headlines/identities, Inter for body, mono for emails/timestamps.
+- **Directory table** — memoized rows, initials avatars with image fallback, per-status colored pills, sector chips, experience micro-bars, relative timestamps, staggered entrance, skeleton loading rows, and a dedicated empty state.
 
 ---
 
-## 10. Seeding & Data Migration Utilities
+## 11. Performance & Optimization Strategy
 
-For testing and database maintenance, the platform includes automated seeding and batch schema migration tools.
+- **Pagination-first lists** — `usePaginatedCollection` loads 20 rows/page with cursor pagination (directory, opportunities).
+- **Precomputed analytics** — Cloud Functions maintain `_system/dashboard_stats` on every write; dashboards read one document instead of scanning collections.
+- **Lazy loading** — TinyMCE and chart code load only on the routes that need them; avatars lazy-load.
+- **Memoized rows & stable callbacks** — selection/filter changes don't re-render the whole table.
+- **Heavy jobs off the browser** — CSV export (`exportConsultants` callable), bulk verify/delete chunked at ≤400 writes/batch, country migration explicit-trigger only.
+- **Self-hosted fonts** — no runtime Google Fonts dependency.
 
-### A. Development Database Seeding
-*   **Component / Page**: [page.tsx](file:///Users/elene/Documents/Curatio%20Consultatnt/src/app/dashboard/seed/page.tsx)
-*   **Purpose**: Creates pre-configured consultant mock accounts ( Sarah Jenkins, Marcus Chen, Elena Rossi) with diverse sectors, years of experience, status tags, and matching role credentials to test directory layouts, matchmaking algorithms, and authentication states.
+---
 
-### B. Country Code Data Migration
-*   **Location**: Seed Page & Auto-Trigger in Admin Directory.
-*   **Logic**: Loops through all `/consultantProfiles` and applicant records, checking for legacy ISO 2-letter country codes (e.g., `us`, `uk`, `de`). It maps them to their standardized full country names using the global `COUNTRY_CODE_MAP` configuration to maintain search index and dropdown filtering integrity.
+## 12. Testing
+
+- **Playwright smoke tests** (`tests/dashboard.spec.ts`) — admin and consultant dashboard load, navigation, and role-gated visibility.
+- **E2E mock mode** — `NEXT_PUBLIC_E2E_TEST=true` swaps `use-user` onto a mock profile (`mockRole` in localStorage), so UI tests run without Firebase credentials.
+- Commands: `npm run typecheck`, `npm run lint`, `npm run build`, `npx playwright test`.
+
+---
+
+## 13. Deployment & Environment
+
+| Target | Command |
+|---|---|
+| Hosting (Next.js) | Firebase App Hosting deploys on push (`apphosting.yaml`, `maxInstances: 1`) |
+| Functions | `npm run deploy` in `functions/` (or `firebase deploy --only functions`) |
+| Rules + indexes | `firebase deploy --only firestore:rules,firestore:indexes` |
+| Storage rules | `firebase deploy --only storage` |
+
+### Environment variables
+
+| Variable | Purpose |
+|---|---|
+| `NEXT_PUBLIC_FIREBASE_API_KEY` / `AUTH_DOMAIN` / `PROJECT_ID` / `STORAGE_BUCKET` / `MESSAGING_SENDER_ID` / `APP_ID` | Web SDK config |
+| `GEMINI_API_KEY` | Genkit flows |
+| `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | Email dispatch |
+| `WEBHOOK_SECRET` | Directory webhook signing |
+| `FIREBASE_SERVICE_ACCOUNT_KEY` | Admin SDK credentials for local dev (optional on App Hosting — ADC is automatic) |
+
+### Operational notes
+
+- **First admin bootstrap** — invites require an existing admin; provision the first one with the Admin SDK/console.
+- **Composite indexes** — `firestore.indexes.json` covers the `applicants` collectionGroup queries (`uid`, `status`, `appliedDate`); deploy indexes before shipping those features.
+- **Webhook-created profiles** are keyed by email; if the same person later registers an account, a duplicate UID-keyed profile may appear and should be merged by an admin.
