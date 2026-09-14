@@ -23,7 +23,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.completeAdminRegistration = exports.inviteAdmin = exports.exportConsultants = exports.onApplicantWritten = exports.onOpportunityWritten = exports.onConsultantWritten = void 0;
+exports.onAuthUserDeleted = exports.onAdminRoleDeleted = exports.completeAdminRegistration = exports.inviteAdmin = exports.exportConsultants = exports.onApplicantWritten = exports.onOpportunityWritten = exports.onConsultantWritten = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 admin.initializeApp();
@@ -268,5 +268,36 @@ exports.completeAdminRegistration = functions.https.onCall(async (_data, context
     await admin.auth().setCustomUserClaims(uid, { admin: true });
     await inviteRef.delete();
     return { role: 'admin' };
+});
+// 4. Admin Revocation Safety Net
+// Deleting an adminRoles document revokes the Firebase Auth custom claim and
+// invalidates existing refresh tokens so a removed admin loses access instead
+// of keeping the `admin: true` claim until the token expires.
+exports.onAdminRoleDeleted = functions.firestore
+    .document('adminRoles/{userId}')
+    .onDelete(async (_snapshot, context) => {
+    const userId = String(context.params.userId || '');
+    // Pending invites live at adminRoles/email:{email} and never map to an
+    // Auth account, so there is nothing to revoke for them.
+    if (!userId || userId.startsWith('email:'))
+        return;
+    try {
+        await admin.auth().getUser(userId);
+    }
+    catch (_a) {
+        // The Auth account no longer exists — nothing to revoke.
+        return;
+    }
+    await admin.auth().setCustomUserClaims(userId, { admin: null });
+    await admin.auth().revokeRefreshTokens(userId);
+});
+// 5. Auth Account Cleanup
+// When an Auth account is deleted, remove its role marker documents so no
+// orphaned authorization records remain behind.
+exports.onAuthUserDeleted = functions.auth.user().onDelete(async (user) => {
+    await Promise.all([
+        db.collection('adminRoles').doc(user.uid).delete(),
+        db.collection('consultantRoles').doc(user.uid).delete(),
+    ]);
 });
 //# sourceMappingURL=index.js.map

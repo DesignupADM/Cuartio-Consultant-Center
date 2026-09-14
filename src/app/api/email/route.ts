@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { FieldValue } from "firebase-admin/firestore"
 import { adminDb, isAdminUser } from "@/lib/firebase-admin"
 import { isResendConfigured, sendBulkEmail, sendEmail } from "@/lib/email"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 export async function POST(request: Request) {
   try {
@@ -15,6 +16,14 @@ export async function POST(request: Request) {
     const admin = await isAdminUser(idToken)
     if (!admin) {
       return NextResponse.json({ error: "Administrator access required" }, { status: 403 })
+    }
+
+    const rateLimit = checkRateLimit(`email:${admin.uid}`, 20, 60 * 60 * 1000)
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        { error: "Too many email requests. Please wait before sending again." },
+        { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+      )
     }
 
     if (!isResendConfigured()) {

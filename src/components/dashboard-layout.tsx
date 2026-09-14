@@ -32,6 +32,7 @@ import { Separator } from "@/components/ui/separator"
 import { ProtectedRoute } from "@/components/protected-route"
 import { useRouter } from "next/navigation"
 import { ModeToggle } from "@/components/mode-toggle"
+import { EmailVerificationBanner } from "@/components/email-verification-banner"
 
 function DashboardShell({
   children,
@@ -153,6 +154,7 @@ function DashboardShell({
         </header>
         <main className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top_right,rgba(60,221,221,0.03),transparent_40%),radial-gradient(circle_at_bottom_left,rgba(38,102,166,0.03),transparent_40%)]">
           <div className="p-8 lg:p-10 max-w-7xl mx-auto">
+            <EmailVerificationBanner />
             {children}
           </div>
         </main>

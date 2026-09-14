@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth, useFirestore, useCollection, useFirebaseApp } from "@/firebase"
-import { createUserWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from "firebase/auth"
+import { createUserWithEmailAndPassword, GoogleAuthProvider, sendEmailVerification, signInWithPopup } from "firebase/auth"
 import { createUserProfile, getUserProfile } from "@/firebase/firestore/users"
 import { useUser } from "@/firebase/auth/use-user"
 import Link from "next/link"
@@ -156,6 +156,14 @@ export default function RegisterPage() {
     
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password)
+
+      // Best-effort: a delivery failure must not block the account creation.
+      try {
+        await sendEmailVerification(userCredential.user)
+      } catch (verificationError) {
+        console.warn("Could not send verification email:", verificationError)
+      }
+
       const activation = await tryActivateInvitedAdmin()
       
       if (activation === "admin") {

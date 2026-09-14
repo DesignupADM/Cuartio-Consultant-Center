@@ -11,24 +11,49 @@ service firebase.storage {
     }
 
     function isAdmin() {
-      return isSignedIn() && request.auth.token.admin == true;
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        firestore.exists(/databases/(default)/documents/adminRoles/$(request.auth.uid))
+      );
+    }
+
+    // Only safe raster image types. SVG is intentionally excluded because it
+    // can embed scripts and would be served from a trusted origin.
+    function isAllowedImage() {
+      return request.resource.contentType in [
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+        'image/gif'
+      ];
+    }
+
+    function isPdf() {
+      return request.resource.contentType == 'application/pdf';
     }
 
     match /consultants/{userId}/{allPaths=**} {
-      allow read: if isOwner(userId) || (request.auth != null && firestore.exists(/databases/(default)/documents/adminRoles/$(request.auth.uid)));
-      allow write: if isOwner(userId) &&
-                    request.resource.size < 5 * 1024 * 1024 &&
-                    (request.resource.contentType.matches('application/pdf') || request.resource.contentType.startsWith('image/'));
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) &&
+        (
+          (isPdf() && request.resource.size < 10 * 1024 * 1024) ||
+          (isAllowedImage() && request.resource.size < 5 * 1024 * 1024)
+        );
+      allow delete: if isOwner(userId) || isAdmin();
     }
     
     match /admins/{userId}/{allPaths=**} {
-      allow read: if true;
-      allow write: if isOwner(userId) && (request.auth != null && firestore.exists(/databases/(default)/documents/adminRoles/$(request.auth.uid)));
+      allow read: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId) && isAdmin() &&
+        isAllowedImage() && request.resource.size < 5 * 1024 * 1024;
+      allow delete: if isOwner(userId) || isAdmin();
     }
     
     match /opportunities/{allPaths=**} {
       allow read: if true;
-      allow write: if request.auth != null && firestore.exists(/databases/(default)/documents/adminRoles/$(request.auth.uid));
+      allow create, update: if isAdmin() &&
+        isAllowedImage() && request.resource.size < 10 * 1024 * 1024;
+      allow delete: if isAdmin();
     }
     
     match /{allPaths=**} {

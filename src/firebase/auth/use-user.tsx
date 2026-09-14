@@ -10,14 +10,18 @@ import { UserProfile } from '../firestore/users';
 const profileCache = new Map<string, UserProfile | null>();
 const profileRequestCache = new Map<string, Promise<UserProfile | null>>();
 
-const isE2ETest = process.env.NEXT_PUBLIC_E2E_TEST === "true";
+// The auth mock is a test-only escape hatch. It must never activate in a
+// production build, regardless of environment variables, so it is gated on
+// NODE_ENV which Next.js inlines as "production" for production bundles.
+const isE2ETest =
+  process.env.NODE_ENV !== "production" && process.env.NEXT_PUBLIC_E2E_TEST === "true";
 
 function getMockRole(): UserProfile["role"] {
   if (typeof window === "undefined") {
-    return "admin";
+    return "consultant";
   }
 
-  return window.localStorage.getItem("mockRole") === "consultant" ? "consultant" : "admin";
+  return window.localStorage.getItem("mockRole") === "admin" ? "admin" : "consultant";
 }
 
 function getMockUser(): User {

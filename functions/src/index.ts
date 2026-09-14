@@ -294,3 +294,37 @@ export const completeAdminRegistration = functions.https.onCall(async (_data, co
 
   return { role: 'admin' };
 });
+
+// 4. Admin Revocation Safety Net
+// Deleting an adminRoles document revokes the Firebase Auth custom claim and
+// invalidates existing refresh tokens so a removed admin loses access instead
+// of keeping the `admin: true` claim until the token expires.
+export const onAdminRoleDeleted = functions.firestore
+  .document('adminRoles/{userId}')
+  .onDelete(async (_snapshot, context) => {
+    const userId = String(context.params.userId || '');
+
+    // Pending invites live at adminRoles/email:{email} and never map to an
+    // Auth account, so there is nothing to revoke for them.
+    if (!userId || userId.startsWith('email:')) return;
+
+    try {
+      await admin.auth().getUser(userId);
+    } catch {
+      // The Auth account no longer exists — nothing to revoke.
+      return;
+    }
+
+    await admin.auth().setCustomUserClaims(userId, { admin: null });
+    await admin.auth().revokeRefreshTokens(userId);
+  });
+
+// 5. Auth Account Cleanup
+// When an Auth account is deleted, remove its role marker documents so no
+// orphaned authorization records remain behind.
+export const onAuthUserDeleted = functions.auth.user().onDelete(async (user) => {
+  await Promise.all([
+    db.collection('adminRoles').doc(user.uid).delete(),
+    db.collection('consultantRoles').doc(user.uid).delete(),
+  ]);
+});

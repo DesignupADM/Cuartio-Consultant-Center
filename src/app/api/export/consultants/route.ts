@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import type { Query, DocumentData } from "firebase-admin/firestore"
 import { adminDb, isAdminUser } from "@/lib/firebase-admin"
+import { checkRateLimit } from "@/lib/rate-limit"
 
 const CSV_COLUMNS = [
   "First Name",
@@ -18,7 +19,11 @@ const CSV_COLUMNS = [
 ]
 
 function escapeCsv(value: unknown): string {
-  const str = value === null || value === undefined ? "" : String(value)
+  let str = value === null || value === undefined ? "" : String(value)
+  // Neutralize spreadsheet formula injection (values starting with = + - @).
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`
+  }
   if (/[",\n\r]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`
   }
@@ -43,6 +48,14 @@ export async function GET(request: Request) {
   const admin = await isAdminUser(idToken)
   if (!admin) {
     return NextResponse.json({ error: "Administrator access required" }, { status: 403 })
+  }
+
+  const rateLimit = checkRateLimit(`export-consultants:${admin.uid}`, 15, 60 * 60 * 1000)
+  if (!rateLimit.allowed) {
+    return NextResponse.json(
+      { error: "Too many export requests. Please wait and try again." },
+      { status: 429, headers: { "Retry-After": String(rateLimit.retryAfterSeconds) } }
+    )
   }
 
   const rows: string[] = [CSV_COLUMNS.join(",")]

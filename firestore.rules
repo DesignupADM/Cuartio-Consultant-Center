@@ -48,13 +48,16 @@ service cloud.firestore {
       allow update: if isAdmin() || (
         isOwner(consultantId) &&
         request.resource.data.id == resource.data.id &&
-        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'aiInsight', 'role']))
+        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['status', 'aiInsight', 'role', 'source', 'email']))
       );
       allow delete: if isAdmin();
     }
 
     match /opportunities/{opportunityId} {
-      allow get: if true;
+      // Public share links only expose open projects. Signed-in users may also
+      // read closed ones; drafts stay admin-only.
+      allow get: if resource.data.status == 'open' ||
+        (isSignedIn() && (isAdmin() || resource.data.status == 'closed'));
       allow list: if isSignedIn();
       allow create: if isAdmin();
       allow update, delete: if isAdmin();
@@ -129,7 +132,9 @@ service cloud.firestore {
     }
 
     match /settings/{docId} {
-      allow get: if isSignedIn() || docId == 'global';
+      // Only the public site settings document is world-readable; every other
+      // settings document is admin-only.
+      allow get: if docId == 'global' || isAdmin();
       allow list: if isAdmin();
       allow create, update, delete: if isAdmin();
     }
