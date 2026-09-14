@@ -5,6 +5,7 @@ import { adminDb, adminAuth } from "@/lib/firebase-admin"
 import { sendEmail, isResendConfigured } from "@/lib/email"
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
 import { hasSeenRecently, rememberRequest, REPLAY_WINDOW_MS } from "@/lib/replay-cache"
+import { resolveSettings, isEmailDomainAllowed } from "@/lib/settings"
 
 const MAX_BODY_SIZE = 1 * 1024 * 1024 // 1MB
 const MAX_ENTRIES_PER_REQUEST = 500
@@ -485,8 +486,18 @@ export async function POST(request: Request) {
     )
   }
 
-  const accountEntries = entries.filter((e) => e.createAccount)
-  const plainEntries = entries.filter((e) => !e.createAccount)
+  const settingsSnap = await adminDb.collection("settings").doc("global").get()
+  const settings = resolveSettings(settingsSnap.data())
+
+  // Account creation is restricted to allowed email domains when configured.
+  // Records that fail the domain policy are still ingested as directory-only
+  // entries rather than being dropped.
+  const accountEntries = entries.filter(
+    (e) => e.createAccount && isEmailDomainAllowed(e.consultant.email, settings.allowedEmailDomains)
+  )
+  const plainEntries = entries.filter(
+    (e) => !e.createAccount || (e.createAccount && !isEmailDomainAllowed(e.consultant.email, settings.allowedEmailDomains))
+  )
 
   if (accountEntries.length > MAX_ACCOUNT_ENTRIES_PER_REQUEST) {
     return jsonResponse(
@@ -570,7 +581,7 @@ export async function POST(request: Request) {
       let passwordResetLink: string | undefined
       let linkDelivered = false
 
-      if (isResendConfigured()) {
+      if (isResendConfigured() && settings.emailNotificationsEnabled) {
         try {
           passwordResetLink = await adminAuth.generatePasswordResetLink(consultant.email, {
             url: continueUrl,

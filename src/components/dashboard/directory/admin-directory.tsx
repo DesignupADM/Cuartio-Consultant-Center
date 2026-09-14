@@ -21,6 +21,7 @@ import {
   Upload,
   Filter,
   CircleCheck,
+  CircleX,
   Mail,
   Phone,
   Globe,
@@ -72,7 +73,6 @@ import { useFirestore, useAuth, usePaginatedCollection, useCollection, useDoc } 
 import { collection, query, where, doc, updateDoc, writeBatch, getDocs, serverTimestamp, limit, startAfter } from "firebase/firestore"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { EmptyState } from "@/components/ui/empty-state"
 
 export type Consultant = {
@@ -250,6 +250,15 @@ const ConsultantTableRow = memo(function ConsultantTableRow({
           </span>
         </div>
       </TableCell>
+      {visibleColumns.phone && (
+        <TableCell>
+          {consultant.phone ? (
+            <span className="whitespace-nowrap text-[13px] font-medium text-foreground/85">{consultant.phone}</span>
+          ) : (
+            <span className="text-muted-foreground/40">—</span>
+          )}
+        </TableCell>
+      )}
       {visibleColumns.years && (
         <TableCell className="text-center">
           {yearsValid ? (
@@ -262,6 +271,15 @@ const ConsultantTableRow = memo(function ConsultantTableRow({
                 />
               </span>
             </div>
+          ) : (
+            <span className="text-muted-foreground/40">—</span>
+          )}
+        </TableCell>
+      )}
+      {visibleColumns.language && (
+        <TableCell>
+          {consultant.language ? (
+            <span className="text-[13px] font-medium text-foreground/85">{consultant.language}</span>
           ) : (
             <span className="text-muted-foreground/40">—</span>
           )}
@@ -307,7 +325,9 @@ function LoadingTableRows({ visibleColumns }: { visibleColumns: VisibleColumns }
     visibleColumns.status,
     visibleColumns.sector,
     true, // region
+    visibleColumns.phone,
     visibleColumns.years,
+    visibleColumns.language,
     visibleColumns.lastUpdate,
     true, // actions
   ]
@@ -350,22 +370,25 @@ export function AdminDirectory() {
   const { data: settings } = useDoc(settingsRef as any)
   const aiExtractionEnabled = settings?.aiExtraction ?? true
 
-  const [filters, setFilters] = useState({ country: '', sector: '', language: '', minYears: '' })
+  const [filters, setFilters] = useState({ country: '', sector: '', language: '', minYears: '', status: '' })
+  const [advancedFilters, setAdvancedFilters] = useState({ bioKeyword: '', updatedAfter: '' })
+  const [isAdvancedFiltersOpen, setIsAdvancedFiltersOpen] = useState(false)
   const [isMessageDialogOpen, setIsMessageDialogOpen] = useState(false)
-  const [messageMode, setMessageMode] = useState<'custom' | 'template'>('custom')
-  const [messageForm, setMessageForm] = useState({ subject: '', body: '', templateId: '' })
+  const [messageForm, setMessageForm] = useState({ subject: '', body: '' })
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false)
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   
   const consultantsQuery = useMemo(() => {
-    // Reference refreshTrigger to force query re-evaluation on import completion
-    const _forceReload = refreshTrigger;
+    // refreshTrigger is intentionally in the dependency list: bumping it
+    // recreates the query so the paginated fetch resets after bulk mutations.
+    void refreshTrigger
     let q = query(collection(db, "consultantProfiles"));
     if (filters.country && filters.country !== 'all') q = query(q, where('country', '==', filters.country));
     if (filters.sector) q = query(q, where('sector', '==', filters.sector));
     if (filters.language) q = query(q, where('language', '==', filters.language));
     if (filters.minYears) q = query(q, where('years', '>=', Number(filters.minYears)));
+    if (filters.status) q = query(q, where('status', '==', filters.status));
     return q;
   }, [db, filters, refreshTrigger])
   const { data: consultants, loading, loadingMore, hasMore, loadMore } = usePaginatedCollection<Consultant>(consultantsQuery as any, 20)
@@ -460,11 +483,24 @@ export function AdminDirectory() {
 
   const filteredConsultants = useMemo(() => {
     const q = searchQuery.toLowerCase().trim()
-    if (!q) return consultants || []
-    return (consultants || []).filter(c => 
-      `${c.firstName} ${c.lastName} ${c.profession} ${c.country} ${c.sector}`.toLowerCase().includes(q)
-    )
-  }, [consultants, searchQuery])
+    const bioKeyword = advancedFilters.bioKeyword.toLowerCase().trim()
+    const updatedAfter = advancedFilters.updatedAfter
+      ? new Date(advancedFilters.updatedAfter).getTime()
+      : null
+
+    return (consultants || []).filter(c => {
+      if (q) {
+        const haystack = `${c.firstName} ${c.lastName} ${c.profession} ${c.country} ${c.sector} ${c.bio || ""}`.toLowerCase()
+        if (!haystack.includes(q)) return false
+      }
+      if (bioKeyword && !(c.bio || "").toLowerCase().includes(bioKeyword)) return false
+      if (updatedAfter !== null) {
+        const updated = getLastUpdateDate(c.lastUpdate)
+        if (!updated || updated.getTime() < updatedAfter) return false
+      }
+      return true
+    })
+  }, [consultants, searchQuery, advancedFilters])
 
   const handleOpenCV = useCallback((consultant: Consultant, e?: React.MouseEvent) => {
     e?.stopPropagation()
@@ -577,17 +613,64 @@ export function AdminDirectory() {
   }
 
   const handleSendMessageSubmit = async () => {
-    setIsSendingMessage(true);
-    await new Promise(r => setTimeout(r, 1000));
-    setIsSendingMessage(false);
-    setIsMessageDialogOpen(false);
-    setMessageForm({ subject: '', body: '', templateId: '' });
-    
-    toast({
-      title: "Messages Queued",
-      description: `Dispatched instructions to Brevo SMTP for ${selectedIds.length} recipients.`
-    });
-    setSelectedIds([]);
+    if (selectedIds.length === 0) return
+
+    const subject = messageForm.subject.trim()
+    const body = messageForm.body.trim()
+    if (!subject || !body) {
+      toast({
+        variant: "destructive",
+        title: "Missing Fields",
+        description: "A subject line and message body are required."
+      })
+      return
+    }
+
+    setIsSendingMessage(true)
+    try {
+      const currentUser = auth.currentUser
+      if (!currentUser) {
+        toast({ variant: "destructive", title: "Not Authenticated", description: "Please sign in again to send messages." })
+        return
+      }
+
+      const idToken = await currentUser.getIdToken()
+      const response = await fetch("/api/email", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ recipientIds: selectedIds, subject, message: body }),
+      })
+
+      const result = await response.json().catch(() => null)
+      if (!response.ok) {
+        toast({
+          variant: "destructive",
+          title: "Send Failed",
+          description: result?.error || "Could not dispatch the messages."
+        })
+        return
+      }
+
+      const failed = result?.failed ?? 0
+      toast({
+        title: failed > 0 ? "Messages Partially Sent" : "Messages Sent",
+        description:
+          failed > 0
+            ? `${result.sent} email(s) sent, ${failed} failed. Check the Notification Center for details.`
+            : `Delivered to ${result.sent} recipient(s) and logged in the Notification Center.`
+      })
+      setIsMessageDialogOpen(false)
+      setMessageForm({ subject: '', body: '' })
+      setSelectedIds([])
+    } catch (err) {
+      console.error("Bulk message failed:", err)
+      toast({ variant: "destructive", title: "Send Failed", description: "Could not dispatch the messages." })
+    } finally {
+      setIsSendingMessage(false)
+    }
   }
 
   const handleBulkVerify = async () => {
@@ -613,9 +696,42 @@ export function AdminDirectory() {
         description: `Marked ${selectedIds.length} profiles as verified.`
       });
       setSelectedIds([]);
+      setRefreshTrigger(prev => prev + 1);
     } catch (err) {
       console.error("Bulk Verify Failed", err);
       toast({ variant: "destructive", title: "Bulk Verify Failed" });
+    }
+  }
+
+  const handleBulkReject = async () => {
+    if (selectedIds.length === 0) return;
+    if (!confirm(`Mark the ${selectedIds.length} selected profiles as rejected?`)) {
+      return;
+    }
+
+    try {
+      const chunks = [];
+      for (let i = 0; i < selectedIds.length; i += 400) {
+        chunks.push(selectedIds.slice(i, i + 400));
+      }
+
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        chunk.forEach(id => {
+          batch.update(doc(db, "consultantProfiles", id), { status: 'rejected' });
+        });
+        await batch.commit();
+      }
+
+      toast({
+        title: "Bulk Reject Successful",
+        description: `Marked ${selectedIds.length} profiles as rejected.`
+      });
+      setSelectedIds([]);
+      setRefreshTrigger(prev => prev + 1);
+    } catch (err) {
+      console.error("Bulk reject failed:", err);
+      toast({ variant: "destructive", title: "Bulk Reject Failed" });
     }
   }
 
@@ -666,11 +782,33 @@ export function AdminDirectory() {
       if (activeConsultant?.id === id) {
         setActiveConsultant(prev => prev ? { ...prev, status: 'verified' } : null)
       }
+      setRefreshTrigger(prev => prev + 1)
     } catch (err) {
       toast({
         variant: "destructive",
         title: "Update Failed",
         description: "Could not verify the profile."
+      })
+    }
+  }
+
+  const handleRejectProfile = async (id: string) => {
+    const userRef = doc(db, "consultantProfiles", id)
+    try {
+      await updateDoc(userRef, { status: 'rejected' })
+      toast({
+        title: "Profile Rejected",
+        description: "Consultant status has been updated to rejected."
+      })
+      if (activeConsultant?.id === id) {
+        setActiveConsultant(prev => prev ? { ...prev, status: 'rejected' } : null)
+      }
+      setRefreshTrigger(prev => prev + 1)
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Update Failed",
+        description: "Could not reject the profile."
       })
     }
   }
@@ -701,6 +839,9 @@ export function AdminDirectory() {
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleBulkVerify}>
                   <CircleCheck className="mr-2 h-4 w-4" /> Mark as Verified
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleBulkReject}>
+                  <CircleX className="mr-2 h-4 w-4" /> Mark as Rejected
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-destructive" onClick={handleBulkDelete}>
@@ -789,7 +930,7 @@ export function AdminDirectory() {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Sheet>
+          <Sheet open={isAdvancedFiltersOpen} onOpenChange={setIsAdvancedFiltersOpen}>
             <SheetTrigger asChild>
               <Button variant="outline" size="sm" className="h-9 relative border-dashed hover:border-primary/50 transition-colors">
                 <Filter className="mr-2 h-3.5 w-3.5" />
@@ -805,14 +946,18 @@ export function AdminDirectory() {
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Language & Communication</h3>
                   <div className="space-y-2">
                     <Label>Languages</Label>
-                    <Select>
-                      <SelectTrigger><SelectValue placeholder="Select Languages" /></SelectTrigger>
+                    <Select
+                      value={filters.language || "all"}
+                      onValueChange={(v) => setFilters(prev => ({ ...prev, language: v === "all" ? "" : v }))}
+                    >
+                      <SelectTrigger><SelectValue placeholder="All languages" /></SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="en">English</SelectItem>
-                        <SelectItem value="es">Spanish</SelectItem>
-                        <SelectItem value="fr">French</SelectItem>
-                        <SelectItem value="pt">Portuguese</SelectItem>
-                        <SelectItem value="ar">Arabic</SelectItem>
+                        <SelectItem value="all">All Languages</SelectItem>
+                        <SelectItem value="English">English</SelectItem>
+                        <SelectItem value="Spanish">Spanish</SelectItem>
+                        <SelectItem value="French">French</SelectItem>
+                        <SelectItem value="Portuguese">Portuguese</SelectItem>
+                        <SelectItem value="Arabic">Arabic</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -822,17 +967,37 @@ export function AdminDirectory() {
                   <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Profile Details</h3>
                   <div className="space-y-2">
                     <Label>Keywords in Bio</Label>
-                    <Input placeholder="e.g. 'renewable', 'legal', 'policy'..." />
+                    <Input
+                      placeholder="e.g. 'renewable', 'legal', 'policy'..."
+                      value={advancedFilters.bioKeyword}
+                      onChange={(e) => setAdvancedFilters(prev => ({ ...prev, bioKeyword: e.target.value }))}
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label>Last Updated After</Label>
-                    <Input type="date" />
+                    <Input
+                      type="date"
+                      value={advancedFilters.updatedAfter}
+                      onChange={(e) => setAdvancedFilters(prev => ({ ...prev, updatedAfter: e.target.value }))}
+                    />
                   </div>
                 </div>
               </div>
               <SheetFooter className="flex flex-col gap-2">
-                <Button className="w-full bg-primary">Apply Advanced Filters</Button>
-                <Button variant="ghost" className="w-full text-muted-foreground">Clear All</Button>
+                <Button className="w-full bg-primary" onClick={() => setIsAdvancedFiltersOpen(false)}>
+                  Apply Advanced Filters
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full text-muted-foreground"
+                  onClick={() => {
+                    setFilters({ country: '', sector: '', language: '', minYears: '', status: '' })
+                    setAdvancedFilters({ bioKeyword: '', updatedAfter: '' })
+                    setSearchQuery('')
+                  }}
+                >
+                  Clear All
+                </Button>
               </SheetFooter>
             </SheetContent>
           </Sheet>
@@ -880,10 +1045,25 @@ export function AdminDirectory() {
                 <X className="h-4 w-4" />
               </Button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              <div className="space-y-2">
+                <Label className="text-xs text-muted-foreground">Status</Label>
+                <Select
+                  value={filters.status || "all"}
+                  onValueChange={(v) => setFilters(prev => ({...prev, status: v === "all" ? "" : v}))}
+                >
+                  <SelectTrigger className="h-9"><SelectValue placeholder="All Statuses" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Statuses</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="verified">Verified</SelectItem>
+                    <SelectItem value="rejected">Rejected</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Country</Label>
-                <Select onValueChange={(v) => setFilters(prev => ({...prev, country: v}))}>
+                <Select value={filters.country || "all"} onValueChange={(v) => setFilters(prev => ({...prev, country: v}))}>
                   <SelectTrigger className="h-9"><SelectValue placeholder="All Countries" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Countries</SelectItem>
@@ -897,9 +1077,13 @@ export function AdminDirectory() {
               </div>
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Sector / Area</Label>
-                <Select onValueChange={(v) => setFilters(prev => ({...prev, sector: v}))}>
+                <Select
+                  value={filters.sector || "all"}
+                  onValueChange={(v) => setFilters(prev => ({...prev, sector: v === "all" ? "" : v}))}
+                >
                   <SelectTrigger className="h-9"><SelectValue placeholder="All Sectors" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="all">All Sectors</SelectItem>
                     <SelectItem value="infra">Infrastructure</SelectItem>
                     <SelectItem value="finance">Finance</SelectItem>
                     <SelectItem value="law">Law</SelectItem>
@@ -910,9 +1094,13 @@ export function AdminDirectory() {
               </div>
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Min. Experience</Label>
-                <Select onValueChange={(v) => setFilters(prev => ({...prev, minYears: v}))}>
+                <Select
+                  value={filters.minYears || "all"}
+                  onValueChange={(v) => setFilters(prev => ({...prev, minYears: v === "all" ? "" : v}))}
+                >
                   <SelectTrigger className="h-9"><SelectValue placeholder="Any" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="all">Any</SelectItem>
                     <SelectItem value="5">5+ Years</SelectItem>
                     <SelectItem value="10">10+ Years</SelectItem>
                     <SelectItem value="15">15+ Years</SelectItem>
@@ -921,7 +1109,9 @@ export function AdminDirectory() {
                 </Select>
               </div>
               <div className="flex items-end">
-                <Button className="w-full h-9 bg-primary/90 hover:bg-primary">Apply</Button>
+                <Button className="w-full h-9 bg-primary/90 hover:bg-primary" onClick={() => setShowQuickFilters(false)}>
+                  Apply
+                </Button>
               </div>
             </div>
           </div>
@@ -963,7 +1153,9 @@ export function AdminDirectory() {
                   {visibleColumns.status && <TableHead className="font-black text-[11px] uppercase tracking-widest text-muted-foreground">Status</TableHead>}
                   {visibleColumns.sector && <TableHead className="font-black text-[11px] uppercase tracking-widest text-muted-foreground">Sector</TableHead>}
                   <TableHead className="font-black text-[11px] uppercase tracking-widest text-muted-foreground">Region</TableHead>
+                  {visibleColumns.phone && <TableHead className="font-black text-[11px] uppercase tracking-widest text-muted-foreground">Phone</TableHead>}
                   {visibleColumns.years && <TableHead className="text-center font-black text-[11px] uppercase tracking-widest text-muted-foreground">Exp.</TableHead>}
+                  {visibleColumns.language && <TableHead className="font-black text-[11px] uppercase tracking-widest text-muted-foreground">Language</TableHead>}
                   {visibleColumns.lastUpdate && <TableHead className="font-black text-[11px] uppercase tracking-widest text-muted-foreground">Last Update</TableHead>}
                   <TableHead className="pr-6 text-right font-black text-[11px] uppercase tracking-widest text-muted-foreground">
                     <span className="sr-only">Actions</span>
@@ -1032,11 +1224,23 @@ export function AdminDirectory() {
                       <Badge variant="secondary" className="bg-accent/10 text-accent-foreground">{activeConsultant.profession}</Badge>
                     </div>
                   </div>
-                  {activeConsultant.status !== 'verified' && (
-                    <Button size="sm" onClick={() => handleVerifyProfile(activeConsultant.id)} className="bg-emerald-600 hover:bg-emerald-700">
-                      <CircleCheck className="mr-2 h-4 w-4" /> Verify Profile
-                    </Button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {activeConsultant.status !== 'verified' && (
+                      <Button size="sm" onClick={() => handleVerifyProfile(activeConsultant.id)} className="bg-emerald-600 hover:bg-emerald-700">
+                        <CircleCheck className="mr-2 h-4 w-4" /> Verify
+                      </Button>
+                    )}
+                    {activeConsultant.status !== 'rejected' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleRejectProfile(activeConsultant.id)}
+                        className="border-destructive/30 text-destructive hover:bg-destructive/10"
+                      >
+                        <CircleX className="mr-2 h-4 w-4" /> Reject
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </SheetHeader>
 
@@ -1226,57 +1430,46 @@ export function AdminDirectory() {
       <Dialog open={isMessageDialogOpen} onOpenChange={setIsMessageDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Send Bulk Message</DialogTitle>
+            <DialogTitle>Send Message</DialogTitle>
             <DialogDescription>
-              Configure the message or select a Brevo template to be sent to {selectedIds.length} consultants.
+              Send an email notification to {selectedIds.length} selected consultant{selectedIds.length === 1 ? "" : "s"}.
+              The send is logged in the Notification Center.
             </DialogDescription>
           </DialogHeader>
-          
-          <Tabs defaultValue="custom" onValueChange={(v) => setMessageMode(v as 'custom' | 'template')} className="w-full mt-4">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="custom">Custom Message</TabsTrigger>
-              <TabsTrigger value="template">Brevo Template</TabsTrigger>
-            </TabsList>
-            <TabsContent value="custom" className="space-y-4 pt-4">
-              <div className="space-y-2">
-                <Label>Subject Line</Label>
-                <Input 
-                  placeholder="Enter email subject" 
-                  value={messageForm.subject}
-                  onChange={e => setMessageForm(prev => ({...prev, subject: e.target.value}))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Message Body</Label>
-                <Textarea 
-                  placeholder="Type your message here..." 
-                  className="min-h-[120px]"
-                  value={messageForm.body}
-                  onChange={e => setMessageForm(prev => ({...prev, body: e.target.value}))}
-                />
-              </div>
-            </TabsContent>
-            <TabsContent value="template" className="pt-4">
-              <div className="space-y-2">
-                <Label>Select Template</Label>
-                <Select value={messageForm.templateId} onValueChange={(val) => setMessageForm(prev => ({...prev, templateId: val}))}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Choose a template" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="tpl_welcome">Welcome to Network</SelectItem>
-                    <SelectItem value="tpl_opportunity">New Opportunity Match</SelectItem>
-                    <SelectItem value="tpl_update">Profile Update Request</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </TabsContent>
-          </Tabs>
+
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label>Subject Line</Label>
+              <Input 
+                placeholder="Enter email subject" 
+                value={messageForm.subject}
+                onChange={e => setMessageForm(prev => ({...prev, subject: e.target.value}))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Message Body</Label>
+              <Textarea 
+                placeholder="Type your message here..." 
+                className="min-h-[120px]"
+                value={messageForm.body}
+                onChange={e => setMessageForm(prev => ({...prev, body: e.target.value}))}
+              />
+            </div>
+          </div>
 
           <DialogFooter className="mt-6">
             <Button variant="outline" onClick={() => setIsMessageDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSendMessageSubmit} disabled={isSendingMessage}>
-              {isSendingMessage ? "Sending..." : "Dispatch via Brevo SMTP"}
+            <Button
+              onClick={handleSendMessageSubmit}
+              disabled={isSendingMessage || !messageForm.subject.trim() || !messageForm.body.trim()}
+            >
+              {isSendingMessage ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...
+                </>
+              ) : (
+                `Send to ${selectedIds.length} Consultant${selectedIds.length === 1 ? "" : "s"}`
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

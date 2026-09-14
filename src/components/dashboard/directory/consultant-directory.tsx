@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { 
   Search, 
+  SearchX,
   Filter,
   Globe,
   Briefcase,
@@ -27,6 +28,8 @@ import { Badge } from "@/components/ui/badge"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
+import { EmptyState } from "@/components/ui/empty-state"
 import { useFirestore, usePaginatedCollection } from "@/firebase"
 import { collection, query, where } from "firebase/firestore"
 import { type Consultant } from "./admin-directory"
@@ -41,8 +44,9 @@ export function ConsultantDirectory() {
   const consultantsQuery = useMemo(() => {
     let q = query(collection(db, "consultantProfiles"), where("status", "==", "verified"));
     if (filters.country && filters.country !== 'all') q = query(q, where('country', '==', filters.country));
-    if (filters.sector) q = query(q, where('sector', '==', filters.sector));
-    if (filters.language) q = query(q, where('language', '==', filters.language));
+    if (filters.sector && filters.sector !== 'all') q = query(q, where('sector', '==', filters.sector));
+    if (filters.language && filters.language !== 'all') q = query(q, where('language', '==', filters.language));
+    if (filters.minYears && filters.minYears !== 'all') q = query(q, where('years', '>=', Number(filters.minYears)));
     return q;
   }, [db, filters])
   
@@ -52,8 +56,10 @@ export function ConsultantDirectory() {
   const [showQuickFilters, setShowQuickFilters] = useState(false)
 
   const filteredConsultants = useMemo(() => {
-    return (consultants || []).filter(c => 
-      `${c.firstName} ${c.lastName} ${c.profession} ${c.country} ${c.sector}`.toLowerCase().includes(searchQuery.toLowerCase())
+    const q = searchQuery.toLowerCase().trim()
+    if (!q) return consultants || []
+    return (consultants || []).filter(c =>
+      `${c.firstName} ${c.lastName} ${c.profession} ${c.country} ${c.sector} ${c.bio || ""}`.toLowerCase().includes(q)
     )
   }, [consultants, searchQuery])
 
@@ -114,7 +120,7 @@ export function ConsultantDirectory() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Country</Label>
-                <Select onValueChange={(v) => setFilters(prev => ({...prev, country: v}))}>
+                <Select value={filters.country || "all"} onValueChange={(v) => setFilters(prev => ({...prev, country: v}))}>
                   <SelectTrigger className="h-9"><SelectValue placeholder="All Countries" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Countries</SelectItem>
@@ -128,9 +134,13 @@ export function ConsultantDirectory() {
               </div>
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Sector / Area</Label>
-                <Select onValueChange={(v) => setFilters(prev => ({...prev, sector: v}))}>
+                <Select
+                  value={filters.sector || "all"}
+                  onValueChange={(v) => setFilters(prev => ({...prev, sector: v === "all" ? "" : v}))}
+                >
                   <SelectTrigger className="h-9"><SelectValue placeholder="All Sectors" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="all">All Sectors</SelectItem>
                     <SelectItem value="infra">Infrastructure</SelectItem>
                     <SelectItem value="finance">Finance</SelectItem>
                     <SelectItem value="law">Law</SelectItem>
@@ -141,9 +151,13 @@ export function ConsultantDirectory() {
               </div>
               <div className="space-y-2">
                 <Label className="text-xs text-muted-foreground">Min. Experience</Label>
-                <Select onValueChange={(v) => setFilters(prev => ({...prev, minYears: v}))}>
+                <Select
+                  value={filters.minYears || "all"}
+                  onValueChange={(v) => setFilters(prev => ({...prev, minYears: v === "all" ? "" : v}))}
+                >
                   <SelectTrigger className="h-9"><SelectValue placeholder="Any" /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="all">Any</SelectItem>
                     <SelectItem value="5">5+ Years</SelectItem>
                     <SelectItem value="10">10+ Years</SelectItem>
                     <SelectItem value="15">15+ Years</SelectItem>
@@ -156,6 +170,44 @@ export function ConsultantDirectory() {
         )}
       </div>
 
+        {loading && (!consultants || consultants.length === 0) ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={`skeleton-${i}`} className="rounded-2xl border border-border/60 bg-card/40 p-6 space-y-4">
+                <div className="flex items-center gap-4">
+                  <Skeleton className="h-12 w-12 rounded-xl" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
+                </div>
+                <Skeleton className="h-3 w-full" />
+                <Skeleton className="h-3 w-3/4" />
+              </div>
+            ))}
+          </div>
+        ) : !loading && filteredConsultants.length === 0 ? (
+          <div className="rounded-2xl border border-border/60 bg-card/40 shadow-xl backdrop-blur-md">
+            <EmptyState
+              icon={SearchX}
+              title="No Consultants Found"
+              description="No verified profiles match your current search or filters. Try adjusting your criteria."
+              action={
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setSearchQuery("")
+                    setFilters({ country: '', sector: '', language: '', minYears: '' })
+                  }}
+                >
+                  <X className="mr-2 h-4 w-4" />
+                  Clear Filters
+                </Button>
+              }
+              className="py-20"
+            />
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredConsultants.map((consultant, index) => (
             <div 
@@ -204,6 +256,7 @@ export function ConsultantDirectory() {
             </div>
           ))}
         </div>
+        )}
       
       {hasMore && (
           <div className="flex justify-center mt-6">

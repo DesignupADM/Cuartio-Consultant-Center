@@ -3,6 +3,7 @@ import { FieldValue } from "firebase-admin/firestore"
 import { adminDb, isAdminUser } from "@/lib/firebase-admin"
 import { isResendConfigured, sendBulkEmail, sendEmail } from "@/lib/email"
 import { checkRateLimit } from "@/lib/rate-limit"
+import { resolveSettings } from "@/lib/settings"
 
 export async function POST(request: Request) {
   try {
@@ -33,6 +34,16 @@ export async function POST(request: Request) {
       )
     }
 
+    const settingsSnap = await adminDb.collection("settings").doc("global").get()
+    const settings = resolveSettings(settingsSnap.data())
+
+    if (!settings.emailNotificationsEnabled) {
+      return NextResponse.json(
+        { error: "Email notifications are currently disabled by an administrator." },
+        { status: 503 }
+      )
+    }
+
     const body = await request.json().catch(() => null)
     if (!body || typeof body.subject !== "string" || typeof body.message !== "string") {
       return NextResponse.json({ error: "subject and message are required" }, { status: 400 })
@@ -42,17 +53,40 @@ export async function POST(request: Request) {
     const message = body.message.trim().slice(0, 5000)
     const recipient: string | undefined = body.recipient
     const recipientEmail: string | undefined = body.recipientEmail
+    const recipientIds: unknown = body.recipientIds
 
-    if (!recipient && !recipientEmail) {
-      return NextResponse.json({ error: "recipient or recipientEmail is required" }, { status: 400 })
+    if (!recipient && !recipientEmail && !Array.isArray(recipientIds)) {
+      return NextResponse.json({ error: "recipient, recipientIds or recipientEmail is required" }, { status: 400 })
     }
 
     let emails: string[] = []
     let displayRecipient = recipient || recipientEmail || "Unknown"
+    let notificationRecipientIds: string[] = recipient && recipient !== "ALL" ? [recipient] : []
 
     if (recipientEmail) {
       emails = [recipientEmail]
       displayRecipient = recipientEmail
+      notificationRecipientIds = []
+    } else if (Array.isArray(recipientIds) && recipientIds.length > 0) {
+      const ids = recipientIds
+        .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
+        .map((id) => id.trim())
+        .slice(0, 400)
+
+      if (ids.length > 0) {
+        const refs = ids.map((id) => adminDb.collection("consultantProfiles").doc(id))
+        const snaps = await adminDb.getAll(...refs)
+        const unique = new Set<string>()
+        snaps.forEach((snap) => {
+          const email = snap.data()?.email
+          if (typeof email === "string" && email.includes("@")) {
+            unique.add(email.toLowerCase().trim())
+          }
+        })
+        emails = Array.from(unique)
+        displayRecipient = `Selected Consultants (${ids.length})`
+        notificationRecipientIds = ids
+      }
     } else if (recipient === "ALL") {
       const snapshot = await adminDb.collection("consultantProfiles").select("email").get()
       const unique = new Set<string>()
@@ -77,25 +111,42 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No recipient email addresses found." }, { status: 404 })
     }
 
+    const footer = `\n\n--\nCuratio International Foundation${settings.supportEmail ? `\n${settings.supportEmail}` : ""}`
+    const finalMessage = message.endsWith(footer) ? message : `${message}${footer}`
+
     const { sent, failed } =
       emails.length === 1
-        ? await sendEmail(emails[0], subject, message).then(() => ({ sent: 1, failed: [] }))
-        : await sendBulkEmail(emails, subject, message)
+        ? await sendEmail(emails[0], subject, finalMessage).then(() => ({ sent: 1, failed: [] }))
+        : await sendBulkEmail(emails, subject, finalMessage)
 
     const status = failed.length === 0 ? "Sent" : sent === 0 ? "Failed" : "Partial"
 
-    if (recipient && recipient !== "ALL") {
-      await adminDb
-        .collection("consultantNotifications")
-        .doc(recipient)
-        .collection("notifications")
-        .add({
-          subject,
-          message,
-          type: "manual",
-          status,
-          timestamp: FieldValue.serverTimestamp(),
+    if (notificationRecipientIds.length > 0) {
+      const chunks: string[][] = []
+      for (let i = 0; i < notificationRecipientIds.length; i += 400) {
+        chunks.push(notificationRecipientIds.slice(i, i + 400))
+      }
+
+      for (const chunk of chunks) {
+        const batch = adminDb.batch()
+        chunk.forEach((recipientId) => {
+          batch.set(
+            adminDb
+              .collection("consultantNotifications")
+              .doc(recipientId)
+              .collection("notifications")
+              .doc(),
+            {
+              subject,
+              message: finalMessage,
+              type: "manual",
+              status,
+              timestamp: FieldValue.serverTimestamp(),
+            }
+          )
         })
+        await batch.commit()
+      }
     }
 
     await adminDb.collection("systemLogs").add({

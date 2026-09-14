@@ -2,46 +2,37 @@
 "use client"
 
 import { use, useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { 
   MapPin, 
   Calendar, 
   Globe, 
   Clock, 
   CheckCircle2, 
-  ChevronRight,
   ArrowLeft,
-  Mail,
-  User,
-  Briefcase,
   Loader2
 } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import { PlaceHolderImages } from "@/lib/placeholder-images"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
-import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
-import { useFirestore, useStorage } from "@/firebase"
+import { useFirestore } from "@/firebase"
+import { useUser } from "@/firebase/auth/use-user"
 import { doc, getDoc } from "firebase/firestore"
 import { type Opportunity, applyToOpportunity } from "@/firebase/firestore/opportunities"
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage"
+import { resolveSettings, DEFAULT_SETTINGS, type SystemSettings } from "@/lib/settings"
 
 export default function PublicOpportunityPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const { toast } = useToast()
   const db = useFirestore()
-  const storage = useStorage()
+  const { user, profile, loading: userLoading } = useUser()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [opportunity, setOpportunity] = useState<Opportunity | null>(null)
   const [loading, setLoading] = useState(true)
-  const [formData, setFormData] = useState<Record<string, any>>({})
-  const [cvFile, setCvFile] = useState<File | null>(null)
+  const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SETTINGS)
 
   useEffect(() => {
     const fetchOpp = async () => {
@@ -51,6 +42,13 @@ export default function PublicOpportunityPage({ params }: { params: Promise<{ id
         const snap = await getDoc(docRef)
         if (snap.exists()) {
           setOpportunity({ id: snap.id, ...snap.data() } as Opportunity)
+        }
+
+        try {
+          const settingsSnap = await getDoc(doc(db, "settings", "global"))
+          setSettings(resolveSettings(settingsSnap.data()))
+        } catch (settingsErr) {
+          console.warn("Could not load system settings", settingsErr)
         }
       } catch (err) {
         console.error("Failed to load opportunity", err)
@@ -66,63 +64,40 @@ export default function PublicOpportunityPage({ params }: { params: Promise<{ id
     description: "Global connectivity"
   }).imageUrl
 
-  const handleApply = async (e: React.FormEvent) => {
-    e.preventDefault()
+  const isOpen = (opportunity?.status ?? "open") === "open"
+
+  const handleSignedInApply = async () => {
+    if (!user || !profile) return
     setIsSubmitting(true)
-    
     try {
-      let cvUrl = "";
-      if (cvFile) {
-        const fileRef = ref(storage, `applications/cvs/${Date.now()}_${cvFile.name}`);
-        const snapshot = await uploadBytes(fileRef, cvFile);
-        cvUrl = await getDownloadURL(snapshot.ref);
-      }
-
-      // We assume the user is authenticated in a real scenario, but for this demo, 
-      // we'll just mock a UID or use an anonymous one. Since the prompt implies 
-      // the applicant is applying, we generate a mock UID if not logged in.
-      // Wait, applyToOpportunity expects userData to have uid, firstName, lastName, email, country.
-      const userData = {
-        uid: `user_${Date.now()}`,
-        firstName: formData.first_name || "Unknown",
-        lastName: formData.last_name || "User",
-        email: formData.email || "no-email@example.com",
-        country: "Unknown"
-      };
-
-      await applyToOpportunity(db, id, userData, {
-        cvUrl,
-        answers: formData
-      });
+      await applyToOpportunity(
+        db,
+        id,
+        {
+          uid: user.uid,
+          firstName: profile.firstName || user.displayName?.split(" ")[0] || "Unknown",
+          lastName: profile.lastName || user.displayName?.split(" ").slice(1).join(" ") || "User",
+          email: profile.email || user.email || "",
+          country: profile.country || "Not specified",
+        },
+        profile.cvUrl ? { cvUrl: profile.cvUrl } : undefined
+      )
 
       toast({
-        title: "Application Received",
-        description: "Your profile has been created and your application is being reviewed.",
-      });
-
-      // Clear form
-      setFormData({});
-      setCvFile(null);
+        title: "Application Submitted",
+        description: "Your application is under review. We will contact you by email.",
+      })
     } catch (err: any) {
-      console.error(err);
+      const alreadyApplied = typeof err?.message === "string" && err.message.includes("already applied")
       toast({
-        variant: "destructive",
-        title: "Application Failed",
-        description: err.message || "Something went wrong.",
-      });
+        variant: alreadyApplied ? "default" : "destructive",
+        title: alreadyApplied ? "Already Applied" : "Application Failed",
+        description: err?.message || "Something went wrong. Please try again.",
+      })
     } finally {
-      setIsSubmitting(false);
+      setIsSubmitting(false)
     }
   }
-
-  const schema = opportunity?.formSchema && opportunity.formSchema.length > 0 
-    ? opportunity.formSchema 
-    : [
-        { id: "first_name", label: "First Name", type: "text", required: true, isSystem: true },
-        { id: "last_name", label: "Last Name", type: "text", required: true, isSystem: true },
-        { id: "email", label: "Email Address", type: "text", required: true, isSystem: true },
-        { id: "cv", label: "CV / Resume", type: "file", required: true, isSystem: true },
-      ];
 
   if (loading) {
     return (
@@ -233,85 +208,106 @@ export default function PublicOpportunityPage({ params }: { params: Promise<{ id
             </CardContent>
           </Card>
 
-          <div className="space-y-6 pt-6" id="apply-form">
+          <div className="space-y-6 pt-6" id="apply-section">
             <h2 className="text-2xl font-bold font-headline flex items-center gap-2 text-foreground">
-               Registration & Application
+              Apply for This Project
             </h2>
             <Card className="shadow-sm border-border">
-              <form onSubmit={handleApply}>
-                <CardHeader>
-                  <CardTitle>Create Your Expert Profile</CardTitle>
-                  <CardDescription>Not in our system? Provide your details below to apply and join our expert network.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {schema.map(field => {
-                    if (field.type === 'file') {
-                      return (
-                        <div key={field.id} className="space-y-2">
-                          <Label htmlFor={field.id}>{field.label} {field.required && <span className="text-destructive">*</span>}</Label>
-                          <Input 
-                            id={field.id} 
-                            type="file" 
-                            accept=".pdf,.doc,.docx" 
-                            required={field.required}
-                            onChange={(e) => setCvFile(e.target.files?.[0] || null)}
-                          />
+              <CardHeader>
+                <CardTitle>
+                  {settings.maintenanceMode ? "Applications paused" : isOpen ? "Join the expert network" : "Applications closed"}
+                </CardTitle>
+                <CardDescription>
+                  {settings.maintenanceMode
+                    ? "The platform is temporarily under maintenance. Please check back shortly."
+                    : isOpen
+                      ? "Submit your application through a guided flow. New candidates create their profile as part of the process."
+                      : "This project is no longer accepting new applications."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {settings.maintenanceMode ? (
+                  <p className="text-sm text-muted-foreground">
+                    Applications are temporarily paused while the platform is under maintenance. Thank you for your patience.
+                  </p>
+                ) : !isOpen ? (
+                  <p className="text-sm text-muted-foreground">
+                    Thank you for your interest. Follow the organization page or contact the Curatio team to hear about
+                    future mandates.
+                  </p>
+                ) : userLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Checking your session...
+                  </div>
+                ) : user && profile?.role === "consultant" ? (
+                  settings.requireEmailVerification && !user.emailVerified ? (
+                    <div className="space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        Verify your email address before submitting applications. You can resend the verification link
+                        from the banner on your dashboard.
+                      </p>
+                      <Button asChild variant="outline" className="font-bold">
+                        <Link href="/dashboard">Go to Dashboard</Link>
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        You are signed in as{" "}
+                        <span className="font-semibold text-foreground">
+                          {profile.firstName || user.email || "your account"}
+                        </span>
+                        . Your application will use the details and CV saved on your profile.
+                      </p>
+                      <Button className="bg-primary font-bold" onClick={handleSignedInApply} disabled={isSubmitting}>
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Submitting...
+                          </>
+                        ) : (
+                          "Submit Application"
+                        )}
+                      </Button>
+                    </div>
+                  )
+                ) : user && profile?.role === "admin" ? (
+                  <div className="space-y-4">
+                    <p className="text-sm text-muted-foreground">
+                      You are signed in with an administrator account. Manage applicants from the dashboard instead.
+                    </p>
+                    <Button asChild variant="outline" className="font-bold">
+                      <Link href={`/dashboard/opportunities/${id}?role=admin`}>Open in Dashboard</Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    <ul className="space-y-3">
+                      <li className="flex items-center gap-3 text-sm">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                          1
                         </div>
-                      )
-                    }
-
-                    if (field.type === 'select') {
-                      return (
-                        <div key={field.id} className="space-y-2">
-                          <Label htmlFor={field.id}>{field.label} {field.required && <span className="text-destructive">*</span>}</Label>
-                          <Select 
-                            required={field.required}
-                            onValueChange={(val) => setFormData({...formData, [field.id]: val})}
-                            value={formData[field.id] || ''}
-                          >
-                            <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
-                            <SelectContent>
-                              {(field as any).options?.map((opt: string) => <SelectItem key={opt} value={opt}>{opt}</SelectItem>)}
-                            </SelectContent>
-                          </Select>
+                        Create your consultant profile
+                      </li>
+                      <li className="flex items-center gap-3 text-sm">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                          2
                         </div>
-                      )
-                    }
-
-                    if (field.type === 'textarea') {
-                      return (
-                        <div key={field.id} className="space-y-2">
-                          <Label htmlFor={field.id}>{field.label} {field.required && <span className="text-destructive">*</span>}</Label>
-                          <Textarea 
-                            id={field.id} 
-                            required={field.required}
-                            value={formData[field.id] || ''}
-                            onChange={(e) => setFormData({...formData, [field.id]: e.target.value})}
-                          />
+                        Upload your CV (PDF)
+                      </li>
+                      <li className="flex items-center gap-3 text-sm">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+                          3
                         </div>
-                      )
-                    }
-
-                    return (
-                      <div key={field.id} className="space-y-2">
-                        <Label htmlFor={field.id}>{field.label} {field.required && <span className="text-destructive">*</span>}</Label>
-                        <Input 
-                          id={field.id} 
-                          type="text" 
-                          required={field.required}
-                          value={formData[field.id] || ''}
-                          onChange={(e) => setFormData({...formData, [field.id]: e.target.value})}
-                        />
-                      </div>
-                    )
-                  })}
-                </CardContent>
-                <CardFooter>
-                  <Button type="submit" className="w-full bg-primary" disabled={isSubmitting}>
-                    {isSubmitting ? "Processing Application..." : "Apply for Project"}
-                  </Button>
-                </CardFooter>
-              </form>
+                        Submit your application
+                      </li>
+                    </ul>
+                    <Button asChild className="bg-primary font-bold">
+                      <Link href={`/public/opportunities/${id}/apply`}>Start Application</Link>
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
             </Card>
           </div>
         </div>
@@ -321,13 +317,29 @@ export default function PublicOpportunityPage({ params }: { params: Promise<{ id
           <Card className="border-primary/20 shadow-sm bg-primary/5">
             <CardContent className="p-6 text-center space-y-4">
               <h3 className="font-bold font-headline text-lg text-primary">Ready to make an impact?</h3>
-              <p className="text-sm text-muted-foreground">Submit your application to join the expert network for this project.</p>
-              <Button 
-                className="w-full font-bold shadow-xs" 
-                onClick={() => document.getElementById('apply-form')?.scrollIntoView({ behavior: 'smooth' })}
-              >
-                Apply for Project
-              </Button>
+              <p className="text-sm text-muted-foreground">
+                {settings.maintenanceMode
+                  ? "Applications are temporarily paused for maintenance."
+                  : isOpen
+                    ? "Submit your application to join the expert network for this project."
+                    : "This project is no longer accepting applications."}
+              </p>
+              {settings.maintenanceMode ? (
+                <Button disabled variant="outline" className="w-full font-bold">
+                  Temporarily Paused
+                </Button>
+              ) : isOpen ? (
+                <Button 
+                  className="w-full font-bold shadow-xs" 
+                  onClick={() => document.getElementById('apply-section')?.scrollIntoView({ behavior: 'smooth' })}
+                >
+                  Apply for Project
+                </Button>
+              ) : (
+                <Button disabled variant="outline" className="w-full font-bold">
+                  Applications Closed
+                </Button>
+              )}
             </CardContent>
           </Card>
 

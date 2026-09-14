@@ -23,7 +23,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onAuthUserDeleted = exports.onAdminRoleDeleted = exports.completeAdminRegistration = exports.inviteAdmin = exports.exportConsultants = exports.onApplicantWritten = exports.onOpportunityWritten = exports.onConsultantWritten = void 0;
+exports.retentionCleanup = exports.onAuthUserDeleted = exports.onAdminRoleDeleted = exports.completeAdminRegistration = exports.inviteAdmin = exports.exportConsultants = exports.onApplicantWritten = exports.onOpportunityWritten = exports.onConsultantWritten = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 admin.initializeApp();
@@ -299,5 +299,38 @@ exports.onAuthUserDeleted = functions.auth.user().onDelete(async (user) => {
         db.collection('adminRoles').doc(user.uid).delete(),
         db.collection('consultantRoles').doc(user.uid).delete(),
     ]);
+});
+// 6. Retention Cleanup
+// Purges audit logs and consultant notifications older than the configured
+// retention window (settings/global.logRetentionDays; 0 disables cleanup).
+exports.retentionCleanup = functions.pubsub
+    .schedule('every 24 hours')
+    .timeZone('UTC')
+    .onRun(async () => {
+    var _a;
+    const settingsSnap = await db.doc('settings/global').get();
+    const retentionDays = Number((_a = settingsSnap.data()) === null || _a === void 0 ? void 0 : _a.logRetentionDays);
+    if (!Number.isFinite(retentionDays) || retentionDays <= 0) {
+        return null;
+    }
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+    const maxDeletesPerCollection = 2000;
+    const deleteInBatches = async (baseQuery) => {
+        let deleted = 0;
+        while (deleted < maxDeletesPerCollection) {
+            const snap = await baseQuery.limit(400).get();
+            if (snap.empty)
+                break;
+            const batch = db.batch();
+            snap.docs.forEach((docSnap) => batch.delete(docSnap.ref));
+            await batch.commit();
+            deleted += snap.docs.length;
+        }
+        return deleted;
+    };
+    const logsDeleted = await deleteInBatches(db.collection('systemLogs').where('timestamp', '<', cutoff));
+    const notificationsDeleted = await deleteInBatches(db.collectionGroup('notifications').where('timestamp', '<', cutoff));
+    console.log(`Retention cleanup removed ${logsDeleted} log(s) and ${notificationsDeleted} notification(s).`);
+    return null;
 });
 //# sourceMappingURL=index.js.map

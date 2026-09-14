@@ -4,6 +4,7 @@ import {
   doc, 
   setDoc, 
   addDoc,
+  deleteDoc,
   serverTimestamp, 
   getDoc,
   runTransaction,
@@ -105,7 +106,7 @@ export async function applyToOpportunity(
 
 export async function createOpportunity(
   db: Firestore,
-  data: Omit<Opportunity, 'id' | 'createdAt' | 'updatedAt' | 'status'>
+  data: Omit<Opportunity, 'id' | 'createdAt' | 'updatedAt' | 'status'> & { status?: Opportunity['status'] }
 ): Promise<string> {
   const oppsRef = collection(db, "opportunities");
   let authorName = '';
@@ -128,7 +129,7 @@ export async function createOpportunity(
     ...data,
     ...(authorName ? { authorName } : {}),
     ...(authorEmail ? { authorEmail } : {}),
-    status: 'open',
+    status: data.status === 'draft' ? 'draft' : 'open',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });
@@ -148,4 +149,11 @@ export async function updateOpportunity(
     ...data,
     updatedAt: serverTimestamp()
   });
+}
+
+/**
+ * Deletes an opportunity and (via security rules) hides it from every portal.
+ */
+export async function deleteOpportunity(db: Firestore, id: string): Promise<void> {
+  await deleteDoc(doc(db, "opportunities", id));
 }

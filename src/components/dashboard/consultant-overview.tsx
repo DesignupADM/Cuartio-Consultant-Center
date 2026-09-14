@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { useUser } from "@/firebase/auth/use-user"
 import { useFirestore, useCollection } from "@/firebase"
-import { collection, collectionGroup, onSnapshot, query, where, orderBy, getCountFromServer, limit } from "firebase/firestore"
+import { collection, collectionGroup, onSnapshot, query, where } from "firebase/firestore"
 import { 
   Users, 
   Briefcase, 
@@ -54,7 +54,12 @@ export function ConsultantOverview() {
   const { profile } = useUser()
   const db = useFirestore()
 
-  const opportunitiesQuery = useMemo(() => query(collection(db, "opportunities")), [db])
+  // Security rules only allow consultants to list open projects, so the query
+  // must be constrained by status.
+  const opportunitiesQuery = useMemo(
+    () => query(collection(db, "opportunities"), where("status", "==", "open")),
+    [db]
+  )
   const { data: opportunities, loading: opportunitiesLoading } = useCollection<OpportunityRecord>(opportunitiesQuery as any, { listen: false })
 
   const [applications, setApplications] = useState<ConsultantApplicationRecord[]>([])

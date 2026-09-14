@@ -19,8 +19,15 @@ import {
   Clock,
   Table as TableIcon,
   FileText,
-  CheckCircle2
+  CheckCircle2,
+  Trash2,
+  Search,
+  Download,
+  X
 } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { 
   Sheet, 
   SheetContent, 
@@ -40,11 +47,18 @@ import {
 import { useToast } from "@/hooks/use-toast"
 import { matchConsultants, type MatchConsultantsOutput } from "@/ai/flows/match-consultants-flow"
 import { Separator } from "@/components/ui/separator"
-import { useAuth, useFirestore, useCollection } from "@/firebase"
-import { collection, updateDoc, doc, query, orderBy, getDoc } from "firebase/firestore"
-import { type Opportunity } from "@/firebase/firestore/opportunities"
+import { useAuth, useFirestore, useCollection, useDoc } from "@/firebase"
+import { collection, updateDoc, doc, query, orderBy, getDoc, writeBatch } from "firebase/firestore"
+import { updateOpportunity, deleteOpportunity, type Opportunity } from "@/firebase/firestore/opportunities"
+import { resolveSettings, renderEmailTemplate } from "@/lib/settings"
 import { errorEmitter } from "@/firebase/error-emitter"
 import { FirestorePermissionError } from "@/firebase/errors"
+
+const OPPORTUNITY_STATUS_META: Record<Opportunity['status'], { label: string; className: string }> = {
+  open: { label: "Open", className: "bg-emerald-500/10 text-emerald-700 border-emerald-500/20" },
+  draft: { label: "Draft", className: "bg-amber-500/10 text-amber-700 border-amber-500/20" },
+  closed: { label: "Closed", className: "bg-rose-500/10 text-rose-700 border-rose-500/20" },
+}
 
 type Applicant = {
   id: string;
@@ -84,6 +98,15 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
 
   const [isMatching, setIsMatching] = useState(false)
   const [aiMatches, setAiMatches] = useState<MatchConsultantsOutput | null>(null)
+  const settingsRef = useMemo(() => doc(db, "settings", "global"), [db])
+  const { data: settingsData } = useDoc(settingsRef as any)
+  const settings = useMemo(() => resolveSettings(settingsData as any), [settingsData])
+
+  const [isStatusUpdating, setIsStatusUpdating] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [applicantSearch, setApplicantSearch] = useState("")
+  const [selectedApplicantIds, setSelectedApplicantIds] = useState<string[]>([])
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false)
 
   // Fetch opportunity details
   useEffect(() => {
@@ -119,9 +142,13 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
 
   const filteredApplicants = useMemo(() => {
     if (!applicants) return []
-    if (statusFilter === 'all') return applicants
-    return applicants.filter(app => app.status === statusFilter)
-  }, [applicants, statusFilter])
+    const byStatus = statusFilter === 'all' ? applicants : applicants.filter(app => app.status === statusFilter)
+    const q = applicantSearch.toLowerCase().trim()
+    if (!q) return byStatus
+    return byStatus.filter(app =>
+      `${app.name} ${app.email} ${app.location || ""}`.toLowerCase().includes(q)
+    )
+  }, [applicants, statusFilter, applicantSearch])
 
   const stats = useMemo(() => {
     const list = applicants || []
@@ -180,11 +207,15 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
       if (!currentUser || !opportunity) return
 
       const idToken = await currentUser.getIdToken()
-      const shortlisted = newStatus === 'accepted'
-      const subject = `Application update: ${opportunity.title}`
-      const message = shortlisted
-        ? `Dear applicant,\n\nWe are pleased to inform you that your application for "${opportunity.title}" has been shortlisted. Our team will contact you with the next steps.\n\nCuratio International Foundation`
-        : `Dear applicant,\n\nThank you for your interest in "${opportunity.title}". After careful review, we regret to inform you that your application was not selected for this project.\n\nCuratio International Foundation`
+      const template = newStatus === 'accepted'
+        ? settings.emailTemplates.applicantAccepted
+        : settings.emailTemplates.applicantDeclined
+      const { subject, body } = renderEmailTemplate(template, {
+        name: applicants?.find(a => a.email === applicantEmail)?.name || "Applicant",
+        opportunityTitle: opportunity.title,
+        organization: "Curatio International Foundation",
+        supportEmail: settings.supportEmail,
+      })
 
       await fetch("/api/email", {
         method: "POST",
@@ -192,11 +223,103 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
           "Content-Type": "application/json",
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({ recipientEmail: applicantEmail, subject, message }),
+        body: JSON.stringify({ recipientEmail: applicantEmail, subject, message: body }),
       })
     } catch (err) {
       console.error("Failed to send status email", err)
     }
+  }
+
+  const toggleApplicantSelection = (applicantId: string) => {
+    setSelectedApplicantIds(prev =>
+      prev.includes(applicantId) ? prev.filter(id => id !== applicantId) : [...prev, applicantId]
+    )
+  }
+
+  const toggleAllApplicants = () => {
+    setSelectedApplicantIds(prev =>
+      prev.length === filteredApplicants.length ? [] : filteredApplicants.map(app => app.id)
+    )
+  }
+
+  const handleBulkApplicantStatus = async (newStatus: Applicant['status']) => {
+    if (selectedApplicantIds.length === 0) return
+    const actionLabel = newStatus === 'accepted' ? 'shortlist' : newStatus === 'declined' ? 'decline' : 'move back to Under Review for'
+    if (!confirm(`Are you sure you want to ${actionLabel} ${selectedApplicantIds.length} candidate(s)?`)) {
+      return
+    }
+
+    setIsBulkUpdating(true)
+    try {
+      const chunks: string[][] = []
+      for (let i = 0; i < selectedApplicantIds.length; i += 400) {
+        chunks.push(selectedApplicantIds.slice(i, i + 400))
+      }
+
+      for (const chunk of chunks) {
+        const batch = writeBatch(db)
+        chunk.forEach((applicantId) => {
+          batch.update(doc(db, "opportunities", id, "applicants", applicantId), { status: newStatus })
+        })
+        await batch.commit()
+      }
+
+      if (newStatus === 'accepted' || newStatus === 'declined') {
+        const selected = (applicants || []).filter(app => selectedApplicantIds.includes(app.id))
+        for (const applicant of selected) {
+          if (applicant.email) void sendStatusEmail(applicant.email, newStatus)
+        }
+      }
+
+      toast({
+        title: "Pipeline Updated",
+        description: `${selectedApplicantIds.length} candidate(s) updated.`
+      })
+      setSelectedApplicantIds([])
+    } catch (err) {
+      console.error("Bulk applicant update failed:", err)
+      toast({ variant: "destructive", title: "Bulk Update Failed" })
+    } finally {
+      setIsBulkUpdating(false)
+    }
+  }
+
+  const handleExportApplicants = () => {
+    const escape = (value: unknown) => {
+      let str = value === null || value === undefined ? "" : String(value)
+      if (/^[=+\-@\t\r]/.test(str)) str = `'${str}`
+      return /[",\n\r]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str
+    }
+    const dateToIso = (value: unknown) => {
+      if (!value) return ""
+      if (typeof (value as { toDate?: () => Date }).toDate === "function") {
+        return (value as { toDate: () => Date }).toDate().toISOString()
+      }
+      const parsed = new Date(String(value))
+      return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString()
+    }
+
+    const rows = ["Name,Email,Location,Status,Applied Date"]
+    filteredApplicants.forEach((app) => {
+      rows.push([
+        escape(app.name),
+        escape(app.email),
+        escape(app.location),
+        escape(app.status),
+        escape(dateToIso(app.appliedDate)),
+      ].join(","))
+    })
+
+    const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement("a")
+    link.href = url
+    link.download = `curatio_applicants_${new Date().toISOString().split("T")[0]}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+    toast({ title: "Export Complete", description: "Your download should begin shortly." })
   }
 
   const handleAIMatch = async () => {
@@ -242,6 +365,43 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
     }
   }
 
+  const handleStatusChange = async (newStatus: Opportunity['status']) => {
+    if (!opportunity || newStatus === opportunity.status) return
+    setIsStatusUpdating(true)
+    try {
+      await updateOpportunity(db, id, { status: newStatus })
+      setOpportunityState((prev) =>
+        prev.id === id && prev.opportunity
+          ? { ...prev, opportunity: { ...prev.opportunity, status: newStatus } }
+          : prev
+      )
+      toast({
+        title: "Project Updated",
+        description: `Status changed to ${OPPORTUNITY_STATUS_META[newStatus].label}.`
+      })
+    } catch (err) {
+      console.error("Status update failed:", err)
+      toast({ variant: "destructive", title: "Status Update Failed" })
+    } finally {
+      setIsStatusUpdating(false)
+    }
+  }
+
+  const handleDeleteOpportunity = async () => {
+    if (!opportunity) return
+    if (!confirm(`Delete "${opportunity.title}"? This permanently removes the project and cannot be undone.`)) return
+    setIsDeleting(true)
+    try {
+      await deleteOpportunity(db, id)
+      toast({ title: "Project Deleted" })
+      router.push("/dashboard/opportunities")
+    } catch (err) {
+      console.error("Delete failed:", err)
+      toast({ variant: "destructive", title: "Delete Failed" })
+      setIsDeleting(false)
+    }
+  }
+
   if (oppLoading) {
     return <PageLoadingState message="Loading project management..." />
   }
@@ -274,6 +434,12 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
                 <Badge variant="secondary" className="bg-accent/10 text-accent-foreground border-none font-black uppercase tracking-widest text-[10px]">
                   {opportunity.region}
                 </Badge>
+                <Badge
+                  variant="outline"
+                  className={`font-black uppercase tracking-widest text-[10px] ${OPPORTUNITY_STATUS_META[opportunity.status ?? 'open'].className}`}
+                >
+                  {OPPORTUNITY_STATUS_META[opportunity.status ?? 'open'].label}
+                </Badge>
                 <span className="text-xs text-muted-foreground flex items-center gap-1">
                   <MapPin className="h-3 w-3" /> {opportunity.location}
                 </span>
@@ -281,6 +447,20 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <Select
+              value={opportunity.status ?? 'open'}
+              onValueChange={(v) => handleStatusChange(v as Opportunity['status'])}
+              disabled={isStatusUpdating || isDeleting}
+            >
+              <SelectTrigger className="h-9 w-[140px] bg-background font-bold">
+                {isStatusUpdating ? <Loader2 className="h-4 w-4 animate-spin" /> : <SelectValue />}
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="open">Open</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="closed">Closed</SelectItem>
+              </SelectContent>
+            </Select>
             <Button 
               variant="outline" 
               className="font-bold border-primary/20 text-primary shadow-xs bg-background" 
@@ -289,10 +469,20 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
               <FileText className="h-4 w-4 mr-2" />
               Edit Project
             </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="text-destructive border-destructive/20 hover:bg-destructive/10"
+              onClick={handleDeleteOpportunity}
+              disabled={isDeleting || isStatusUpdating}
+              title="Delete project"
+            >
+              {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            </Button>
           </div>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-4">
+        <div className="grid gap-6 md:grid-cols-5">
           <Card>
             <CardContent className="p-6 flex items-center justify-between">
               <div>
@@ -326,6 +516,17 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
               </div>
             </CardContent>
           </Card>
+          <Card className="ring-1 ring-rose-100 bg-rose-50/10">
+            <CardContent className="p-6 flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black uppercase text-rose-600 tracking-widest mb-1">Declined</p>
+                <p className="text-3xl font-bold text-rose-700">{stats.declined}</p>
+              </div>
+              <div className="h-12 w-12 rounded-xl bg-rose-500/10 flex items-center justify-center text-rose-600">
+                <UserX className="h-6 w-6" />
+              </div>
+            </CardContent>
+          </Card>
           <Button 
             className="h-full bg-accent hover:bg-accent/90 text-accent-foreground shadow-lg shadow-accent/20 border-none font-black text-xs tracking-wider uppercase transition-all hover:-translate-y-0.5" 
             onClick={handleAIMatch} 
@@ -347,6 +548,15 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
                   </CardTitle>
                   <CardDescription className="text-xs">Review and manage consultant submissions for this project.</CardDescription>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 text-[10px] font-black uppercase tracking-wider"
+                  onClick={handleExportApplicants}
+                  disabled={filteredApplicants.length === 0}
+                >
+                  <Download className="h-3.5 w-3.5 mr-1.5" /> Export CSV
+                </Button>
               </CardHeader>
               <div className="px-6 py-4 border-b border-border/50 flex flex-wrap gap-2 bg-muted/10">
                 {(['all', 'applied', 'accepted', 'declined'] as const).map((filter) => {
@@ -366,9 +576,59 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
                   )
                 })}
               </div>
+              <div className="px-6 py-3 border-b border-border/50 flex flex-col sm:flex-row gap-3 sm:items-center bg-card">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                  <Input
+                    placeholder="Search candidates by name, email, or location..."
+                    className="pl-9 h-9 bg-muted/30 border-none"
+                    value={applicantSearch}
+                    onChange={(e) => setApplicantSearch(e.target.value)}
+                  />
+                </div>
+                {selectedApplicantIds.length > 0 && (
+                  <div className="flex items-center gap-2 animate-in fade-in">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-muted-foreground whitespace-nowrap">
+                      {selectedApplicantIds.length} selected
+                    </span>
+                    <Button
+                      size="sm"
+                      className="h-8 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-[10px] uppercase tracking-wider"
+                      onClick={() => handleBulkApplicantStatus('accepted')}
+                      disabled={isBulkUpdating}
+                    >
+                      <UserCheck className="h-3.5 w-3.5 mr-1" /> Shortlist
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 text-rose-600 border-rose-200 hover:bg-rose-50 font-bold text-[10px] uppercase tracking-wider"
+                      onClick={() => handleBulkApplicantStatus('declined')}
+                      disabled={isBulkUpdating}
+                    >
+                      <UserX className="h-3.5 w-3.5 mr-1" /> Decline
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 w-8 p-0"
+                      onClick={() => setSelectedApplicantIds([])}
+                      title="Clear selection"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                )}
+              </div>
               <Table>
                 <TableHeader className="bg-muted/10">
                   <TableRow className="hover:bg-transparent">
+                    <TableHead className="w-[40px] pl-6">
+                      <Checkbox
+                        checked={filteredApplicants.length > 0 && selectedApplicantIds.length === filteredApplicants.length}
+                        onCheckedChange={toggleAllApplicants}
+                      />
+                    </TableHead>
                     <TableHead className="font-bold py-4">Consultant</TableHead>
                     <TableHead className="font-bold">Location</TableHead>
                     <TableHead className="font-bold">Status</TableHead>
@@ -377,11 +637,11 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
                 </TableHeader>
                 <TableBody>
                   {applicantsLoading ? (
-                    <TableStatusRow colSpan={4} message="Loading applicants..." loading />
+                    <TableStatusRow colSpan={5} message="Loading applicants..." loading />
                   ) : applicantsError ? (
-                    <TableStatusRow colSpan={4} message="Applicants could not be loaded right now." tone="error" />
+                    <TableStatusRow colSpan={5} message="Applicants could not be loaded right now." tone="error" />
                   ) : filteredApplicants.length === 0 ? (
-                    <TableStatusRow colSpan={4} message={`No candidates matched the '${statusFilter}' filter.`} />
+                    <TableStatusRow colSpan={5} message={`No candidates matched the '${statusFilter}' filter.`} />
                   ) : (
                     filteredApplicants.map(app => (
                       <TableRow 
@@ -389,6 +649,12 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
                         className="group transition-colors hover:bg-muted/20 cursor-pointer"
                         onClick={() => viewConsultantDetails(app.id)}
                       >
+                        <TableCell className="pl-6" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={selectedApplicantIds.includes(app.id)}
+                            onCheckedChange={() => toggleApplicantSelection(app.id)}
+                          />
+                        </TableCell>
                         <TableCell className="py-4">
                           <div className="flex items-center gap-3">
                             <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-xs font-black text-primary border border-primary/20">
@@ -448,7 +714,9 @@ export default function OpportunityApplicantsPage({ params }: { params: Promise<
                   {aiMatches.matches.map(m => (
                     <div key={m.consultantId} className="bg-white/10 backdrop-blur-md p-6 rounded-2xl border border-white/20">
                       <div className="flex justify-between items-center mb-4">
-                        <h4 className="font-bold text-lg">Consultant ID: {m.consultantId}</h4>
+                        <h4 className="font-bold text-lg">
+                          {applicants?.find(a => a.id === m.consultantId)?.name || `Consultant ${m.consultantId.slice(0, 6)}`}
+                        </h4>
                         <span className="text-3xl font-black text-white">{m.matchScore}%</span>
                       </div>
                       <p className="text-sm text-white/90 leading-relaxed italic border-l-4 border-accent pl-5">

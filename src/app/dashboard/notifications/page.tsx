@@ -166,8 +166,23 @@ export default function NotificationsPage() {
                                 <p className="text-[10px] text-muted-foreground font-medium">{log.type}</p>
                               </TableCell>
                               <TableCell>
-                                <Badge variant="outline" className={`text-[9px] font-bold border-none ${log.status === "Sent" ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
-                                  {log.status === "Sent" ? <CircleCheck className="h-3 w-3 mr-1" /> : <CircleAlert className="h-3 w-3 mr-1" />}
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[9px] font-bold border-none ${
+                                    log.status === "Sent"
+                                      ? "bg-emerald-50 text-emerald-700"
+                                      : log.status === "Failed"
+                                        ? "bg-rose-50 text-rose-700"
+                                        : "bg-sky-50 text-sky-700"
+                                  }`}
+                                >
+                                  {log.status === "Sent" ? (
+                                    <CircleCheck className="h-3 w-3 mr-1" />
+                                  ) : log.status === "Failed" ? (
+                                    <CircleAlert className="h-3 w-3 mr-1" />
+                                  ) : (
+                                    <History className="h-3 w-3 mr-1" />
+                                  )}
                                   {log.status}
                                 </Badge>
                               </TableCell>

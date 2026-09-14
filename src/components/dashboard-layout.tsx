@@ -5,7 +5,6 @@ import * as React from "react"
 import Image from "next/image"
 import { 
   LogOut, 
-  Bell,
   Settings,
   Loader2
 } from "lucide-react"
@@ -33,6 +32,8 @@ import { ProtectedRoute } from "@/components/protected-route"
 import { useRouter } from "next/navigation"
 import { ModeToggle } from "@/components/mode-toggle"
 import { EmailVerificationBanner } from "@/components/email-verification-banner"
+import { NotificationBell } from "@/components/notification-bell"
+import { MaintenanceBanner } from "@/components/maintenance-banner"
 
 function DashboardShell({
   children,
@@ -140,10 +141,7 @@ function DashboardShell({
           <div className="ml-auto flex items-center gap-3">
              <ModeToggle />
              <Separator orientation="vertical" className="h-4 mx-1" />
-             <Button variant="ghost" size="icon" className="rounded-full text-muted-foreground hover:text-primary hover:bg-primary/5 relative">
-                <Bell className="h-5 w-5" />
-                <span className="absolute top-2 right-2 h-2 w-2 bg-accent rounded-full border-2 border-background" />
-             </Button>
+             <NotificationBell />
              <Separator orientation="vertical" className="h-4 mx-1" />
              <Button variant="ghost" size="icon" className="rounded-full text-muted-foreground hover:text-primary hover:bg-primary/5" asChild>
                 <Link href={role === "admin" ? `/dashboard/admin?role=${role}` : `/dashboard/profile?role=${role}`}>
@@ -154,6 +152,7 @@ function DashboardShell({
         </header>
         <main className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top_right,rgba(60,221,221,0.03),transparent_40%),radial-gradient(circle_at_bottom_left,rgba(38,102,166,0.03),transparent_40%)]">
           <div className="p-8 lg:p-10 max-w-7xl mx-auto">
+            <MaintenanceBanner />
             <EmailVerificationBanner />
             {children}
           </div>

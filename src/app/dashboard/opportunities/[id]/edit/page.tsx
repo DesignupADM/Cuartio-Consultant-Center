@@ -24,7 +24,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore } from "@/firebase"
-import { updateOpportunity } from "@/firebase/firestore/opportunities"
+import { updateOpportunity, type Opportunity } from "@/firebase/firestore/opportunities"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { generateOpportunity } from "@/ai/flows/generate-opportunity-flow"
 import { errorEmitter } from "@/firebase/error-emitter"
 import { FirestorePermissionError } from "@/firebase/errors"
@@ -54,6 +55,7 @@ export default function EditOpportunityPage({ params }: { params: Promise<{ id: 
   }
 
   const [isGenerating, setIsGenerating] = useState(false)
+  const [status, setStatus] = useState<Opportunity['status']>('open')
   const [formValues, setFormValues] = useState({
     title: "",
     location: "",
@@ -76,6 +78,7 @@ export default function EditOpportunityPage({ params }: { params: Promise<{ id: 
         const snap = await getDoc(docRef)
         if (snap.exists()) {
           const data = snap.data()
+          setStatus(data.status === 'draft' || data.status === 'closed' ? data.status : 'open')
           setFormValues({
             title: data.title || "",
             location: data.location || "",
@@ -142,7 +145,8 @@ export default function EditOpportunityPage({ params }: { params: Promise<{ id: 
       featuredImage: formValues.featuredImage,
       tags: formValues.tags.split(",").map((t: string) => t.trim()).filter(Boolean),
       requirements: formValues.requirements.split("\n").map((r: string) => r.trim()).filter(Boolean),
-      formSchema: formValues.formSchema
+      formSchema: formValues.formSchema,
+      status
     }
 
     try {
@@ -358,6 +362,19 @@ export default function EditOpportunityPage({ params }: { params: Promise<{ id: 
             >
               <Link href={`/dashboard/opportunities/${id}`}>Discard</Link>
             </Button>
+            <div className="flex items-center gap-3 mr-auto md:ml-2">
+              <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Status</Label>
+              <Select value={status} onValueChange={(v) => setStatus(v as Opportunity['status'])}>
+                <SelectTrigger className="h-9 w-[150px] bg-background">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="open">Open (Public)</SelectItem>
+                  <SelectItem value="draft">Draft (Hidden)</SelectItem>
+                  <SelectItem value="closed">Closed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Button 
               type="submit" 
               className="bg-primary hover:bg-primary/90 px-12 font-black uppercase tracking-widest text-[11px] h-11"

@@ -42,6 +42,7 @@ export interface UserProfile {
   updatedAt?: string;
   aiInsight?: any;
   customAnswers?: Record<string, any>;
+  savedOpportunities?: string[];
 }
 
 export async function getUserProfile(db: Firestore, uid: string): Promise<UserProfile | null> {

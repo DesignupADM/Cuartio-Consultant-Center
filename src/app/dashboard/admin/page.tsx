@@ -1,7 +1,7 @@
 
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -26,14 +26,23 @@ import {
   Type,
   AlignLeft,
   ChevronDownSquare,
-  X
+  X,
+  Mail,
+  RotateCcw
 } from "lucide-react"
 import { useFirestore, useCollection, useDoc, useFirebaseApp, useAuth } from "@/firebase"
-import { collection, query, where, doc, setDoc, updateDoc, deleteDoc, addDoc, orderBy, runTransaction } from "firebase/firestore"
+import { collection, query, where, doc, setDoc, updateDoc, deleteDoc, addDoc, orderBy, runTransaction, serverTimestamp } from "firebase/firestore"
+import {
+  DEFAULT_EMAIL_TEMPLATES,
+  EMAIL_TEMPLATE_VARIABLES,
+  normalizeEmailDomains,
+  type EmailTemplates,
+} from "@/lib/settings"
 import { getFunctions, httpsCallable } from "firebase/functions"
 import { errorEmitter } from "@/firebase/error-emitter"
 import { FirestorePermissionError } from "@/firebase/errors"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
 
 export default function AdminPanelPage() {
   const { toast } = useToast()
@@ -62,6 +71,52 @@ export default function AdminPanelPage() {
   const settingsRef = useMemo(() => doc(db, "settings", "global"), [db])
   const { data: settings, loading: settingsLoading } = useDoc(settingsRef as any)
 
+  const [templateForm, setTemplateForm] = useState<EmailTemplates>(DEFAULT_EMAIL_TEMPLATES)
+
+  useEffect(() => {
+    if (!settings?.emailTemplates) return
+    setTemplateForm({
+      applicantAccepted: {
+        ...DEFAULT_EMAIL_TEMPLATES.applicantAccepted,
+        ...(settings.emailTemplates.applicantAccepted || {}),
+      },
+      applicantDeclined: {
+        ...DEFAULT_EMAIL_TEMPLATES.applicantDeclined,
+        ...(settings.emailTemplates.applicantDeclined || {}),
+      },
+    })
+  }, [settings])
+
+  const logSettingsChange = (changedKeys: string[]) => {
+    const actor = auth.currentUser?.email || auth.currentUser?.uid || "unknown"
+    addDoc(collection(db, "systemLogs"), {
+      recipient: actor,
+      type: `Settings updated: ${changedKeys.join(", ")}`,
+      status: "Info",
+      sentCount: 0,
+      failedCount: 0,
+      timestamp: serverTimestamp(),
+    }).catch((err) => console.warn("Could not write settings audit log", err))
+  }
+
+  const handleSaveTemplates = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setIsSaving(true)
+    try {
+      await setDoc(
+        settingsRef,
+        { emailTemplates: templateForm, updatedAt: new Date().toISOString() },
+        { merge: true }
+      )
+      logSettingsChange(["emailTemplates"])
+      toast({ title: "Email Templates Saved", description: "Applicant status emails now use the updated wording." })
+    } catch {
+      toast({ variant: "destructive", title: "Save Failed" })
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   // Fetch dynamic questions
   const questionsQuery = useMemo(() => query(collection(db, "settings", "registration", "questions"), orderBy("order", "asc")), [db])
   const { data: questions, loading: questionsLoading } = useCollection(questionsQuery as any)
@@ -72,6 +127,7 @@ export default function AdminPanelPage() {
 
   const handleToggleSetting = (key: string, value: boolean) => {
     updateDoc(settingsRef, { [key]: value })
+      .then(() => logSettingsChange([key]))
       .catch((err) => {
         errorEmitter.emit('permission-error', new FirestorePermissionError({
           path: settingsRef.path,
@@ -88,11 +144,14 @@ export default function AdminPanelPage() {
     const data = {
       supportEmail: formData.get("supportEmail"),
       dbLimit: parseInt(formData.get("dbLimit") as string) || 5000,
+      allowedEmailDomains: normalizeEmailDomains(formData.get("allowedEmailDomains")),
+      logRetentionDays: Math.max(0, parseInt(formData.get("logRetentionDays") as string) || 0),
       updatedAt: new Date().toISOString()
     }
 
     setDoc(settingsRef, data, { merge: true })
       .then(() => {
+        logSettingsChange(Object.keys(data).filter((key) => key !== "updatedAt"))
         toast({ title: "Settings Saved", description: "System configuration updated." })
       })
       .catch((err) => {
@@ -350,10 +409,11 @@ export default function AdminPanelPage() {
         </div>
 
         <Tabs defaultValue="general" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 mb-8">
+          <TabsList className="grid w-full grid-cols-5 mb-8">
             <TabsTrigger value="general">System Settings</TabsTrigger>
             <TabsTrigger value="form">Registration Builder</TabsTrigger>
             <TabsTrigger value="opps">Project Fields</TabsTrigger>
+            <TabsTrigger value="emails">Email Templates</TabsTrigger>
             <TabsTrigger value="users">Admin Accounts</TabsTrigger>
           </TabsList>
 
@@ -390,6 +450,46 @@ export default function AdminPanelPage() {
                             onCheckedChange={(val) => handleToggleSetting("publicRegistration", val)}
                           />
                         </div>
+                        <div className="flex items-center justify-between space-x-2">
+                          <div className="flex flex-col space-y-1">
+                            <Label className="font-bold">Invite-Only Registration</Label>
+                            <span className="text-xs text-muted-foreground">Close public signup; keep admin invitations active.</span>
+                          </div>
+                          <Switch 
+                            checked={settings?.inviteOnlyRegistration ?? false} 
+                            onCheckedChange={(val) => handleToggleSetting("inviteOnlyRegistration", val)}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between space-x-2">
+                          <div className="flex flex-col space-y-1">
+                            <Label className="font-bold">Maintenance Mode</Label>
+                            <span className="text-xs text-muted-foreground">Pause public applications and warn consultants.</span>
+                          </div>
+                          <Switch 
+                            checked={settings?.maintenanceMode ?? false} 
+                            onCheckedChange={(val) => handleToggleSetting("maintenanceMode", val)}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between space-x-2">
+                          <div className="flex flex-col space-y-1">
+                            <Label className="font-bold">Email Notifications</Label>
+                            <span className="text-xs text-muted-foreground">Master switch for all outgoing emails.</span>
+                          </div>
+                          <Switch 
+                            checked={settings?.emailNotificationsEnabled ?? true} 
+                            onCheckedChange={(val) => handleToggleSetting("emailNotificationsEnabled", val)}
+                          />
+                        </div>
+                        <div className="flex items-center justify-between space-x-2">
+                          <div className="flex flex-col space-y-1">
+                            <Label className="font-bold">Require Verified Email</Label>
+                            <span className="text-xs text-muted-foreground">Consultants must verify their email before applying.</span>
+                          </div>
+                          <Switch 
+                            checked={settings?.requireEmailVerification ?? false} 
+                            onCheckedChange={(val) => handleToggleSetting("requireEmailVerification", val)}
+                          />
+                        </div>
                       </div>
                       <div className="space-y-4">
                         <div className="space-y-2">
@@ -399,6 +499,29 @@ export default function AdminPanelPage() {
                         <div className="space-y-2">
                           <Label htmlFor="dbLimit" className="font-bold uppercase text-[10px] tracking-widest">DB Export Limit</Label>
                           <Input key={`limit-${String(settingsLoading)}`} id="dbLimit" name="dbLimit" type="number" defaultValue={settings?.dbLimit ?? 5000} />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="allowedEmailDomains" className="font-bold uppercase text-[10px] tracking-widest">Allowed Email Domains</Label>
+                          <Input
+                            key={`domains-${String(settingsLoading)}`}
+                            id="allowedEmailDomains"
+                            name="allowedEmailDomains"
+                            placeholder="e.g. curatio.com, partner.org (blank = all)"
+                            defaultValue={(settings?.allowedEmailDomains || []).join(", ")}
+                          />
+                          <p className="text-[10px] text-muted-foreground">Comma-separated. Restricts registration and webhook account creation.</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="logRetentionDays" className="font-bold uppercase text-[10px] tracking-widest">Log Retention (Days)</Label>
+                          <Input
+                            key={`retention-${String(settingsLoading)}`}
+                            id="logRetentionDays"
+                            name="logRetentionDays"
+                            type="number"
+                            min={0}
+                            defaultValue={settings?.logRetentionDays ?? 180}
+                          />
+                          <p className="text-[10px] text-muted-foreground">Audit logs and notifications older than this are purged daily. 0 disables cleanup.</p>
                         </div>
                       </div>
                     </div>
@@ -645,6 +768,65 @@ export default function AdminPanelPage() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="emails" className="space-y-6">
+            <form onSubmit={handleSaveTemplates} className="space-y-6">
+              <div className="grid gap-6 lg:grid-cols-2">
+                {([
+                  { key: "applicantAccepted" as const, title: "Shortlisted (Accepted)", description: "Sent when a candidate is shortlisted." },
+                  { key: "applicantDeclined" as const, title: "Declined", description: "Sent when a candidate is declined." },
+                ]).map(({ key, title, description }) => (
+                  <Card key={key}>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-lg">
+                        <Mail className="h-5 w-5 text-primary" />
+                        {title}
+                      </CardTitle>
+                      <CardDescription>{description}</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="space-y-2">
+                        <Label>Subject</Label>
+                        <Input
+                          value={templateForm[key].subject}
+                          onChange={(e) => setTemplateForm(prev => ({ ...prev, [key]: { ...prev[key], subject: e.target.value } }))}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Body</Label>
+                        <Textarea
+                          rows={9}
+                          className="font-mono text-xs leading-relaxed"
+                          value={templateForm[key].body}
+                          onChange={(e) => setTemplateForm(prev => ({ ...prev, [key]: { ...prev[key], body: e.target.value } }))}
+                          required
+                        />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              <Card>
+                <CardContent className="py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="text-xs text-muted-foreground">
+                    <p className="font-bold text-foreground mb-1">Available variables</p>
+                    <p>{EMAIL_TEMPLATE_VARIABLES.map(v => `{{${v.key}}}`).join("  ")}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" onClick={() => setTemplateForm(DEFAULT_EMAIL_TEMPLATES)}>
+                      <RotateCcw className="mr-2 h-4 w-4" /> Reset to Defaults
+                    </Button>
+                    <Button type="submit" disabled={isSaving}>
+                      {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="mr-2 h-4 w-4" />}
+                      Save Templates
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </form>
           </TabsContent>
 
           <TabsContent value="users" className="space-y-6">

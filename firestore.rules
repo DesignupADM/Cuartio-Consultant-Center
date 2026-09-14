@@ -58,13 +58,18 @@ service cloud.firestore {
       // read closed ones; drafts stay admin-only.
       allow get: if resource.data.status == 'open' ||
         (isSignedIn() && (isAdmin() || resource.data.status == 'closed'));
-      allow list: if isSignedIn();
+      // Non-admins may only list open projects, so their queries must filter by
+      // status == 'open' (the consultant portal does).
+      allow list: if isAdmin() || (isSignedIn() && resource.data.status == 'open');
       allow create: if isAdmin();
       allow update, delete: if isAdmin();
 
       match /applicants/{userId} {
         allow get: if isOwner(userId) || isAdmin();
-        allow create: if isOwner(userId) && request.resource.data.status == 'applied';
+        // Applications are only accepted while the project is open.
+        allow create: if isOwner(userId) &&
+          request.resource.data.status == 'applied' &&
+          get(/databases/$(database)/documents/opportunities/$(opportunityId)).data.status == 'open';
         allow update, delete: if isAdmin();
         allow list: if isAdmin();
       }
@@ -128,7 +133,12 @@ service cloud.firestore {
     match /consultantNotifications/{consultantId}/notifications/{notificationId} {
       allow get, list: if isOwner(consultantId) || isAdmin();
       allow create: if isAdmin();
-      allow update, delete: if isAdmin();
+      // Owners may only flip the read flag; everything else stays admin-only.
+      allow update: if isAdmin() || (
+        isOwner(consultantId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])
+      );
+      allow delete: if isAdmin();
     }
 
     match /settings/{docId} {

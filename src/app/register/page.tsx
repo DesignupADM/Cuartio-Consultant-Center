@@ -8,7 +8,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth, useFirestore, useCollection, useFirebaseApp } from "@/firebase"
-import { createUserWithEmailAndPassword, GoogleAuthProvider, sendEmailVerification, signInWithPopup } from "firebase/auth"
+import { createUserWithEmailAndPassword, GoogleAuthProvider, sendEmailVerification, signInWithPopup, signOut } from "firebase/auth"
+import { resolveSettings, isEmailDomainAllowed, DEFAULT_SETTINGS, type SystemSettings } from "@/lib/settings"
 import { createUserProfile, getUserProfile } from "@/firebase/firestore/users"
 import { useUser } from "@/firebase/auth/use-user"
 import Link from "next/link"
@@ -47,18 +48,16 @@ export default function RegisterPage() {
   const [website, setWebsite] = useState("")
   const [customAnswers, setCustomAnswers] = useState<Record<string, any>>({})
   const [showPassword, setShowPassword] = useState(false)
-  const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null)
+  const [settings, setSettings] = useState<SystemSettings | null>(null)
 
   useEffect(() => {
     let active = true
     getDoc(doc(db, "settings", "global"))
       .then((snap) => {
-        if (!active) return
-        const enabled = snap.exists() ? snap.data().publicRegistration ?? true : true
-        setRegistrationEnabled(Boolean(enabled))
+        if (active) setSettings(resolveSettings(snap.data()))
       })
       .catch(() => {
-        if (active) setRegistrationEnabled(true)
+        if (active) setSettings(DEFAULT_SETTINGS)
       })
     return () => {
       active = false
@@ -87,11 +86,23 @@ export default function RegisterPage() {
   }
 
   const handleGoogleRegister = async () => {
+    if (!settings) return
     setIsLoading(true)
     const provider = new GoogleAuthProvider()
     
     try {
       const result = await signInWithPopup(auth, provider)
+
+      if (!isEmailDomainAllowed(result.user.email, settings.allowedEmailDomains)) {
+        await signOut(auth)
+        toast({
+          variant: "destructive",
+          title: "Email Domain Not Allowed",
+          description: "This email domain is not permitted to register. Contact the foundation for an invitation.",
+        })
+        return
+      }
+
       const activation = await tryActivateInvitedAdmin()
 
       if (activation === "admin") {
@@ -133,6 +144,16 @@ export default function RegisterPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!settings) return
+
+    if (!isEmailDomainAllowed(email, settings.allowedEmailDomains)) {
+      toast({
+        variant: "destructive",
+        title: "Email Domain Not Allowed",
+        description: "This email domain is not permitted to register. Contact the foundation for an invitation.",
+      })
+      return
+    }
 
     const missingFields = getMissingPersonalFields({
       firstName,
@@ -222,7 +243,7 @@ export default function RegisterPage() {
     }))
   }
 
-  if (authLoading || registrationEnabled === null) {
+  if (authLoading || settings === null) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
@@ -230,15 +251,16 @@ export default function RegisterPage() {
     )
   }
 
-  if (registrationEnabled === false) {
+  if (!settings.publicRegistration || settings.inviteOnlyRegistration) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4 md:p-8">
         <Card className="max-w-md w-full border-none shadow-2xl">
           <CardContent className="p-10 text-center space-y-4">
             <h1 className="text-2xl font-bold tracking-tight text-primary font-headline">Registration Closed</h1>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Public registration is currently disabled. If you believe you should have access, please contact the
-              Curatio International Foundation team.
+              {settings.inviteOnlyRegistration
+                ? "Registration is currently invite-only. If you received an invitation, sign in with the invited email address or contact the Curatio International Foundation team."
+                : "Public registration is currently disabled. If you believe you should have access, please contact the Curatio International Foundation team."}
             </p>
             <Button variant="outline" asChild className="w-full">
               <Link href="/login">Back to Sign In</Link>

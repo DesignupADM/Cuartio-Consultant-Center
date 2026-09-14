@@ -1,7 +1,7 @@
 
 "use client"
 
-import { use, useState } from "react"
+import { use, useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
@@ -24,11 +24,13 @@ import Link from "next/link"
 import { Progress } from "@/components/ui/progress"
 
 import { useAuth, useStorage, useFirestore } from "@/firebase"
-import { createUserWithEmailAndPassword } from "firebase/auth"
+import { createUserWithEmailAndPassword, sendEmailVerification } from "firebase/auth"
 import { uploadFile } from "@/firebase/storage/upload"
 import { createUserProfile } from "@/firebase/firestore/users"
-import { applyToOpportunity } from "@/firebase/firestore/opportunities"
+import { applyToOpportunity, type FormField, type Opportunity } from "@/firebase/firestore/opportunities"
 import { COUNTRIES } from "@/lib/countries"
+import { doc, getDoc } from "firebase/firestore"
+import { resolveSettings, isEmailDomainAllowed, type SystemSettings } from "@/lib/settings"
 
 
 export default function ApplyPage({ params }: { params: Promise<{ id: string }> }) {
@@ -42,6 +44,10 @@ export default function ApplyPage({ params }: { params: Promise<{ id: string }> 
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [opportunity, setOpportunity] = useState<Opportunity | null>(null)
+  const [settings, setSettings] = useState<SystemSettings | null>(null)
+  const [checkingOpportunity, setCheckingOpportunity] = useState(true)
+  const [customAnswers, setCustomAnswers] = useState<Record<string, any>>({})
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -56,17 +62,64 @@ export default function ApplyPage({ params }: { params: Promise<{ id: string }> 
     cv: null as File | null
   })
 
+  useEffect(() => {
+    let active = true
+    const loadOpportunity = async () => {
+      try {
+        const [snap, settingsSnap] = await Promise.all([
+          getDoc(doc(db, "opportunities", id)),
+          getDoc(doc(db, "settings", "global")),
+        ])
+        if (active && snap.exists()) {
+          setOpportunity({ id: snap.id, ...snap.data() } as Opportunity)
+        }
+        if (active) {
+          setSettings(resolveSettings(settingsSnap.data()))
+        }
+      } catch (err) {
+        console.error("Failed to load opportunity", err)
+      } finally {
+        if (active) setCheckingOpportunity(false)
+      }
+    }
+    loadOpportunity()
+    return () => {
+      active = false
+    }
+  }, [db, id])
+
+  const systemFieldIds = new Set(["first_name", "last_name", "email", "cv"])
+  const customFields: FormField[] = (opportunity?.formSchema || []).filter(
+    (field) => !field.isSystem && !systemFieldIds.has(field.id) && field.type !== "file"
+  )
+
   const handleNext = () => setStep(prev => prev + 1)
   const handleBack = () => setStep(prev => prev - 1)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!settings) return
+    if (!isEmailDomainAllowed(formData.email, settings.allowedEmailDomains)) {
+      toast({
+        variant: "destructive",
+        title: "Email Domain Not Allowed",
+        description: "This email domain is not permitted to register. Contact the foundation for an invitation.",
+      })
+      return
+    }
     setIsSubmitting(true)
     
     try {
       // 1. Create the Authentication Account
       const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password)
       const uid = userCredential.user.uid
+
+      // Best-effort: a delivery failure must not block the application.
+      try {
+        await sendEmailVerification(userCredential.user)
+      } catch (verificationError) {
+        console.warn("Could not send verification email:", verificationError)
+      }
       
       // 2. Upload CV File if present
       let cvUrl = ""
@@ -96,13 +149,21 @@ export default function ApplyPage({ params }: { params: Promise<{ id: string }> 
       await createUserProfile(db, newProfile)
       
       // 4. Submit the Application for this specific Opportunity
-      await applyToOpportunity(db, id, {
-        uid,
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email,
-        country: formData.country
-      })
+      await applyToOpportunity(
+        db,
+        id,
+        {
+          uid,
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          country: formData.country
+        },
+        {
+          ...(cvUrl ? { cvUrl } : {}),
+          ...(Object.keys(customAnswers).length > 0 ? { answers: customAnswers } : {})
+        }
+      )
       
       setIsSuccess(true)
       toast({
@@ -119,6 +180,67 @@ export default function ApplyPage({ params }: { params: Promise<{ id: string }> 
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  if (checkingOpportunity) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Loading opportunity...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (settings?.maintenanceMode) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="max-w-md w-full text-center p-8">
+          <h1 className="text-2xl font-bold mb-2">Applications Paused</h1>
+          <p className="text-muted-foreground mb-8">
+            The platform is temporarily under maintenance. Applications will reopen shortly.
+          </p>
+          <Button asChild className="w-full">
+            <Link href={`/public/opportunities/${id}`}>Back to Project Page</Link>
+          </Button>
+        </Card>
+      </div>
+    )
+  }
+
+  if (!settings || !settings.publicRegistration || settings.inviteOnlyRegistration) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="max-w-md w-full text-center p-8">
+          <h1 className="text-2xl font-bold mb-2">Registration Closed</h1>
+          <p className="text-muted-foreground mb-8">
+            {settings?.inviteOnlyRegistration
+              ? "Registration is currently invite-only. Contact the Curatio International Foundation team if you believe you should have access."
+              : "Public registration is currently disabled."}
+          </p>
+          <Button asChild className="w-full">
+            <Link href={`/public/opportunities/${id}`}>Back to Project Page</Link>
+          </Button>
+        </Card>
+      </div>
+    )
+  }
+
+  if (!opportunity || opportunity.status !== "open") {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="max-w-md w-full text-center p-8">
+          <h1 className="text-2xl font-bold mb-2">Applications Closed</h1>
+          <p className="text-muted-foreground mb-8">
+            This project is no longer accepting applications. It may have been closed or removed.
+          </p>
+          <Button asChild className="w-full">
+            <Link href={`/public/opportunities/${id}`}>Back to Project Page</Link>
+          </Button>
+        </Card>
+      </div>
+    )
   }
 
   if (isSuccess) {
@@ -246,10 +368,54 @@ export default function ApplyPage({ params }: { params: Promise<{ id: string }> 
                           <Upload className="h-6 w-6" />
                         </div>
                         <p className="font-semibold text-sm">{formData.cv ? formData.cv.name : "Click or drag to upload your CV"}</p>
-                        <p className="text-xs text-muted-foreground mt-1">PDF format, max 5MB</p>
+                        <p className="text-xs text-muted-foreground mt-1">PDF format, max 10MB</p>
                       </div>
                     </div>
                   </div>
+
+                  {customFields.length > 0 && (
+                    <div className="space-y-4 pt-2 border-t">
+                      {customFields.map((field) => (
+                        <div key={field.id} className="space-y-2">
+                          <Label htmlFor={`custom-${field.id}`}>
+                            {field.label} {field.required && <span className="text-destructive">*</span>}
+                          </Label>
+                          {field.type === "select" ? (
+                            <Select
+                              required={field.required}
+                              value={customAnswers[field.id] || ""}
+                              onValueChange={(v) => setCustomAnswers((prev) => ({ ...prev, [field.id]: v }))}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {field.options?.map((opt) => (
+                                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : field.type === "textarea" ? (
+                            <Textarea
+                              id={`custom-${field.id}`}
+                              rows={3}
+                              required={field.required}
+                              value={customAnswers[field.id] || ""}
+                              onChange={(e) => setCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                            />
+                          ) : (
+                            <Input
+                              id={`custom-${field.id}`}
+                              required={field.required}
+                              value={customAnswers[field.id] || ""}
+                              onChange={(e) => setCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))}
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <Card className="bg-primary/5 border-none p-4">
                      <p className="text-xs leading-relaxed text-primary/80">
                        By submitting, you agree to create a Curatio International Foundation consultant account. Your data will be used for project matching and recruitment purposes.

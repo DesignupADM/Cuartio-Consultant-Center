@@ -90,8 +90,9 @@ export default function NewOpportunityPage() {
     }
   }
 
-  const handleCreateOpportunity = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
+  const [isSavingDraft, setIsSavingDraft] = useState(false)
+
+  const saveOpportunity = async (status: 'open' | 'draft') => {
     const newOpp = {
       title: formValues.title,
       location: formValues.location,
@@ -103,11 +104,19 @@ export default function NewOpportunityPage() {
       featuredImage: formValues.featuredImage,
       tags: formValues.tags.split(",").map(t => t.trim()).filter(Boolean),
       requirements: formValues.requirements.split("\n").map(r => r.trim()).filter(Boolean),
-      formSchema: formValues.formSchema
+      formSchema: formValues.formSchema,
+      status
     }
 
     try {
       const oppId = await createOpportunity(db, newOpp);
+
+      if (status === 'draft') {
+        toast({ title: "Draft Saved", description: "Your project is saved as a draft and is not publicly visible." })
+        router.push("/dashboard/opportunities")
+        return
+      }
+
       setFormValues({ title: "", location: "", region: "", duration: "", deadline: "", description: "", content: "", featuredImage: "", tags: "", requirements: "", formSchema: [] });
       
       const publicLink = `${window.location.origin}/public/opportunities/${oppId}`;
@@ -121,6 +130,28 @@ export default function NewOpportunityPage() {
         operation: 'create',
         requestResourceData: newOpp
       }))
+    }
+  }
+
+  const handleCreateOpportunity = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    await saveOpportunity('open')
+  }
+
+  const handleSaveDraft = async () => {
+    if (!formValues.title.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Title Required",
+        description: "Add a project title before saving a draft."
+      })
+      return
+    }
+    setIsSavingDraft(true)
+    try {
+      await saveOpportunity('draft')
+    } finally {
+      setIsSavingDraft(false)
     }
   }
 
@@ -308,6 +339,16 @@ export default function NewOpportunityPage() {
               className="font-bold text-muted-foreground hover:text-foreground"
             >
               <Link href="/dashboard/opportunities">Discard</Link>
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="border-primary/30 text-primary font-black uppercase tracking-widest text-[11px] h-11"
+              onClick={handleSaveDraft}
+              disabled={isSavingDraft || isGenerating}
+            >
+              {isSavingDraft && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Save as Draft
             </Button>
             <Button 
               type="submit" 
