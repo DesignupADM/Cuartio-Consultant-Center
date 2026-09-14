@@ -25,12 +25,17 @@ import {
   ShieldCheck,
   Building2,
   Languages,
+  Pencil,
+  MapPin,
+  Cake,
 } from "lucide-react"
 import { useFirestore, useCollection } from "@/firebase"
 import { doc, getDoc, collection, query, orderBy } from "firebase/firestore"
 import type { Consultant } from "@/components/dashboard/directory/admin-directory"
+import { AdminEditConsultantDialog } from "@/components/dashboard/directory/admin-edit-consultant-dialog"
 import { PageLoadingState, StatePanel } from "@/components/dashboard-feedback"
 import { formatCountryDisplay } from "@/lib/countries"
+import { formatDateOfBirth, resolveGenderDisplay } from "@/lib/consultant-fields"
 
 
 type ConsultantProfileState = {
@@ -49,6 +54,7 @@ export default function ConsultantProfilePage({
   const router = useRouter()
   const db = useFirestore()
 
+  const [isEditOpen, setIsEditOpen] = useState(false)
   const [profileState, setProfileState] = useState<ConsultantProfileState>(() => ({
     id,
     consultant: null,
@@ -153,6 +159,14 @@ export default function ConsultantProfilePage({
               </Button>
             )}
             <Button
+              variant="outline"
+              onClick={() => setIsEditOpen(true)}
+              className="gap-2 border-primary/20"
+            >
+              <Pencil className="h-4 w-4" />
+              Edit Profile
+            </Button>
+            <Button
               asChild
               className="bg-primary gap-2"
             >
@@ -232,7 +246,7 @@ export default function ConsultantProfilePage({
             <Card className="border-none ring-1 ring-border shadow-xs">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-black uppercase tracking-widest text-muted-foreground">
-                  Contact Info
+                  Personal & Contact Info
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4 text-sm">
@@ -247,6 +261,20 @@ export default function ConsultantProfilePage({
                 </div>
                 <Separator />
                 <div className="flex items-start gap-3">
+                  <Mail className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">Alternative Email</p>
+                    {consultant.alternativeEmail ? (
+                      <a href={`mailto:${consultant.alternativeEmail}`} className="font-medium text-primary hover:underline break-all">
+                        {consultant.alternativeEmail}
+                      </a>
+                    ) : (
+                      <p className="font-medium">—</p>
+                    )}
+                  </div>
+                </div>
+                <Separator />
+                <div className="flex items-start gap-3">
                   <Phone className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">Phone</p>
@@ -255,10 +283,56 @@ export default function ConsultantProfilePage({
                 </div>
                 <Separator />
                 <div className="flex items-start gap-3">
+                  <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">State / Province / Region</p>
+                    <p className="font-medium">{consultant.state || "—"}</p>
+                  </div>
+                </div>
+                <Separator />
+                <div className="flex items-start gap-3">
+                  <MapPin className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">City / Town</p>
+                    <p className="font-medium">{consultant.city || "—"}</p>
+                  </div>
+                </div>
+                <Separator />
+                <div className="flex items-start gap-3">
                   <Globe className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">Country</p>
                     <p className="font-medium uppercase">{consultant.country ? formatCountryDisplay(consultant.country) : "—"}</p>
+                  </div>
+                </div>
+                <Separator />
+                <div className="flex items-start gap-3">
+                  <User className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">Gender</p>
+                    <p className="font-medium">{resolveGenderDisplay(consultant.gender, consultant.genderSelfDescribe) || "—"}</p>
+                  </div>
+                </div>
+                <Separator />
+                <div className="flex items-start gap-3">
+                  <Cake className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">Date of Birth</p>
+                    <p className="font-medium">{formatDateOfBirth(consultant.dateOfBirth) || "—"}</p>
+                  </div>
+                </div>
+                <Separator />
+                <div className="flex items-start gap-3">
+                  <Globe className="h-4 w-4 text-muted-foreground mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground mb-0.5">Professional Website / Profile</p>
+                    {consultant.website ? (
+                      <a href={consultant.website} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline break-all">
+                        {consultant.website}
+                      </a>
+                    ) : (
+                      <p className="font-medium">—</p>
+                    )}
                   </div>
                 </div>
                 <Separator />
@@ -415,6 +489,19 @@ export default function ConsultantProfilePage({
           </div>
         </div>
       </div>
+
+      <AdminEditConsultantDialog
+        consultant={consultant}
+        open={isEditOpen}
+        onOpenChange={setIsEditOpen}
+        onSaved={(updates) =>
+          setProfileState((prev) =>
+            prev.id === id && prev.consultant
+              ? { ...prev, consultant: { ...prev.consultant, ...updates } }
+              : prev
+          )
+        }
+      />
     </ProtectedRoute>
   )
 }

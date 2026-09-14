@@ -116,8 +116,14 @@ const CORE_FIELDS: TargetField[] = [
   { id: "firstName", label: "First Name", required: true, isCore: true },
   { id: "lastName", label: "Last Name", required: true, isCore: true },
   { id: "email", label: "Email Address", required: true, isCore: true },
+  { id: "gender", label: "Gender", required: false, isCore: true },
+  { id: "dateOfBirth", label: "Date of Birth", required: false, isCore: true },
   { id: "phone", label: "Phone Number", required: false, isCore: true },
+  { id: "alternativeEmail", label: "Alternative Email", required: false, isCore: true },
   { id: "country", label: "Country", required: false, isCore: true },
+  { id: "state", label: "State / Province / Region", required: false, isCore: true },
+  { id: "city", label: "City / Town", required: false, isCore: true },
+  { id: "website", label: "Professional Website / Profile", required: false, isCore: true },
   { id: "years", label: "Years Experience", required: false, isCore: true, isNumber: true },
   { id: "profession", label: "Profession", required: false, isCore: true },
   { id: "sector", label: "Sector / Area", required: false, isCore: true },
@@ -255,8 +261,14 @@ export function CsvImportDialog({ open, onOpenChange, onImportComplete }: CsvImp
     if (["firstname", "first", "givenname", "fname"].includes(normalized)) return "firstName"
     if (["lastname", "last", "surname", "familyname", "lname"].includes(normalized)) return "lastName"
     if (["email", "emailaddress", "mail", "e-mail"].includes(normalized)) return "email"
+    if (["gender", "sex"].includes(normalized)) return "gender"
+    if (["dateofbirth", "dob", "birthdate", "birthday", "birthdaydate"].includes(normalized)) return "dateOfBirth"
     if (["phone", "phonenumber", "telephone", "mobile", "cell", "contact"].includes(normalized)) return "phone"
+    if (["alternativeemail", "altemail", "secondaryemail", "personalemail"].includes(normalized)) return "alternativeEmail"
     if (["country", "nation", "location", "residence"].includes(normalized)) return "country"
+    if (["state", "province", "region", "stateprovinceregion"].includes(normalized)) return "state"
+    if (["city", "town", "citytown", "locality"].includes(normalized)) return "city"
+    if (["website", "linkedin", "profile", "professionalwebsite", "websiteorprofile"].includes(normalized)) return "website"
     if (["years", "experience", "yearsofexperience", "yearsexperience", "yoe"].includes(normalized)) return "years"
     if (["profession", "job", "title", "role", "occupation"].includes(normalized)) return "profession"
     if (["sector", "industry", "field", "area"].includes(normalized)) return "sector"

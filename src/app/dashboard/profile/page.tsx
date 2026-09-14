@@ -20,6 +20,8 @@ import { doc, setDoc, updateDoc, collection, query, orderBy } from "firebase/fir
 import { uploadFile } from "@/firebase/storage/upload"
 import { compressImage } from "@/lib/image-utils"
 import { COUNTRIES } from "@/lib/countries"
+import { GENDER_OPTIONS, GENDER_SELF_DESCRIBE, getMissingPersonalFields } from "@/lib/consultant-fields"
+import { DatePicker } from "@/components/ui/date-picker"
 import { updateProfile, updateEmail, updatePassword } from "firebase/auth"
 
 interface AdminProfileViewProps {
@@ -378,8 +380,15 @@ export default function ProfilePage() {
     firstName: "",
     lastName: "",
     email: "",
+    gender: "",
+    genderSelfDescribe: "",
+    dateOfBirth: "",
     phone: "",
     country: "",
+    state: "",
+    city: "",
+    alternativeEmail: "",
+    website: "",
     profession: "",
     years: 0,
     sectors: "",
@@ -399,8 +408,15 @@ export default function ProfilePage() {
         firstName: userProfile.firstName || userProfile.displayName?.split(' ')[0] || "",
         lastName: userProfile.lastName || userProfile.displayName?.split(' ')[1] || "",
         email: userProfile.email || "",
+        gender: userProfile.gender || "",
+        genderSelfDescribe: userProfile.genderSelfDescribe || "",
+        dateOfBirth: userProfile.dateOfBirth || "",
         phone: userProfile.phone || "",
         country: userProfile.country || "",
+        state: userProfile.state || "",
+        city: userProfile.city || "",
+        alternativeEmail: userProfile.alternativeEmail || "",
+        website: userProfile.website || "",
         profession: userProfile.profession || "",
         years: userProfile.years || 0,
         sectors: userProfile.sector || "", // Mapping sector to sectors for UI
@@ -413,7 +429,7 @@ export default function ProfilePage() {
   }, [userProfile])
 
   const completeness = useMemo(() => {
-    const coreFields = ['firstName', 'lastName', 'profession', 'country', 'bio', 'phone', 'cvUrl']
+    const coreFields = ['firstName', 'lastName', 'gender', 'dateOfBirth', 'profession', 'country', 'bio', 'phone', 'cvUrl']
     let filled = coreFields.filter(f => !!(profile as any)[f]).length
     
     // Add dynamic questions to completeness
@@ -491,7 +507,17 @@ export default function ProfilePage() {
 
   const handleSave = async () => {
     if (!userProfile?.uid) return
-    
+
+    const missingFields = getMissingPersonalFields(profile)
+    if (missingFields.length > 0) {
+      toast({
+        title: "Missing required fields",
+        description: `Please complete: ${missingFields.join(", ")}.`,
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsSaving(true)
     try {
       const profileRef = doc(db, "consultantProfiles", userProfile.uid)
@@ -502,6 +528,14 @@ export default function ProfilePage() {
       
       await setDoc(profileRef, {
         ...profileToSave,
+        firstName: profile.firstName.trim(),
+        lastName: profile.lastName.trim(),
+        genderSelfDescribe: profile.gender === GENDER_SELF_DESCRIBE ? profile.genderSelfDescribe.trim() : "",
+        state: profile.state.trim(),
+        city: profile.city.trim(),
+        phone: profile.phone.trim(),
+        alternativeEmail: profile.alternativeEmail.trim(),
+        website: profile.website.trim(),
         id: userProfile.uid,
         sector: profile.sectors, // Map back to database field name
         updatedAt: new Date().toISOString()
@@ -623,12 +657,51 @@ export default function ProfilePage() {
             <CardContent className="space-y-6 pt-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="first-name">First Name</Label>
+                  <Label htmlFor="first-name">
+                    First Name <span className="text-destructive">*</span>
+                  </Label>
                   <Input id="first-name" value={profile.firstName} onChange={(e) => setProfile(p => ({...p, firstName: e.target.value}))} />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="last-name">Last Name</Label>
+                  <Label htmlFor="last-name">
+                    Last Name <span className="text-destructive">*</span>
+                  </Label>
                   <Input id="last-name" value={profile.lastName} onChange={(e) => setProfile(p => ({...p, lastName: e.target.value}))} />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="gender">
+                    Gender <span className="text-destructive">*</span>
+                  </Label>
+                  <Select value={profile.gender} onValueChange={(v) => setProfile(p => ({...p, gender: v}))}>
+                    <SelectTrigger id="gender"><SelectValue placeholder="Select gender" /></SelectTrigger>
+                    <SelectContent>
+                      {GENDER_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {profile.gender === GENDER_SELF_DESCRIBE && (
+                    <Input
+                      placeholder="Please specify"
+                      value={profile.genderSelfDescribe}
+                      onChange={(e) => setProfile(p => ({...p, genderSelfDescribe: e.target.value}))}
+                    />
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="date-of-birth">
+                    Date of Birth <span className="text-destructive">*</span>
+                  </Label>
+                  <DatePicker
+                    id="date-of-birth"
+                    value={profile.dateOfBirth}
+                    onChange={(v) => setProfile(p => ({...p, dateOfBirth: v}))}
+                    placeholder="Select date of birth"
+                  />
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -641,9 +714,11 @@ export default function ProfilePage() {
                   <Input id="phone" type="tel" value={profile.phone} onChange={(e) => setProfile(p => ({...p, phone: e.target.value}))} placeholder="+1 234 567 890" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="country">Country of Residence</Label>
+                  <Label htmlFor="country">
+                    Country of Residence <span className="text-destructive">*</span>
+                  </Label>
                   <Select value={profile.country} onValueChange={(v) => setProfile(p => ({...p, country: v}))}>
-                    <SelectTrigger><SelectValue placeholder="Select Country" /></SelectTrigger>
+                    <SelectTrigger id="country"><SelectValue placeholder="Select Country" /></SelectTrigger>
                     <SelectContent>
                       {COUNTRIES.map((c) => (
                         <SelectItem key={c.value} value={c.value}>
@@ -652,6 +727,26 @@ export default function ProfilePage() {
                       ))}
                     </SelectContent>
                   </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="state">State / Province / Region</Label>
+                  <Input id="state" value={profile.state} onChange={(e) => setProfile(p => ({...p, state: e.target.value}))} placeholder="e.g. California" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="city">City / Town</Label>
+                  <Input id="city" value={profile.city} onChange={(e) => setProfile(p => ({...p, city: e.target.value}))} placeholder="e.g. San Francisco" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <Label htmlFor="alternative-email">Alternative Email</Label>
+                  <Input id="alternative-email" type="email" value={profile.alternativeEmail} onChange={(e) => setProfile(p => ({...p, alternativeEmail: e.target.value}))} placeholder="alternative@example.com" />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="website">Professional Website or Profile</Label>
+                  <Input id="website" type="url" value={profile.website} onChange={(e) => setProfile(p => ({...p, website: e.target.value}))} placeholder="https://linkedin.com/in/username" />
                 </div>
               </div>
             </CardContent>

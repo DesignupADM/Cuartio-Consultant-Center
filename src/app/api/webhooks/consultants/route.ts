@@ -1,10 +1,28 @@
 import { NextResponse } from "next/server"
-import { createHmac, timingSafeEqual } from "crypto"
+import { createHash, createHmac, timingSafeEqual } from "crypto"
 import { FieldValue } from "firebase-admin/firestore"
 import { adminDb, adminAuth } from "@/lib/firebase-admin"
 import { sendEmail, isResendConfigured } from "@/lib/email"
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit"
+import { hasSeenRecently, rememberRequest, REPLAY_WINDOW_MS } from "@/lib/replay-cache"
 
 const MAX_BODY_SIZE = 1 * 1024 * 1024 // 1MB
+const MAX_ENTRIES_PER_REQUEST = 500
+const MAX_ACCOUNT_ENTRIES_PER_REQUEST = 10
+const RATE_LIMIT_WINDOW_MS = 60_000
+const RATE_LIMIT_PER_IP = 60
+const RATE_LIMIT_GLOBAL = 300
+const ACCOUNT_CREATION_LIMIT = 30
+const ACCOUNT_CREATION_WINDOW_MS = 10 * 60_000
+const TIMESTAMP_TOLERANCE_MS = 5 * 60_000
+const MAX_SIGNATURE_LENGTH = 512
+
+const MAX_STRING_LENGTH = 500
+const MAX_BIO_LENGTH = 5000
+const MAX_URL_LENGTH = 2000
+const MAX_ARRAY_ITEMS = 50
+const MAX_ARRAY_ITEM_LENGTH = 200
+const MAX_EMAIL_LENGTH = 320
 
 const STRING_FIELDS = [
   "firstName",
@@ -23,9 +41,14 @@ const STRING_FIELDS = [
   "website",
   "skype",
   "gender",
+  "genderSelfDescribe",
+  "dateOfBirth",
+  "alternativeEmail",
   "highestDegree",
   "completionYear",
 ] as const
+
+const URL_FIELDS = new Set(["cvUrl", "avatarUrl", "website"])
 
 const ARRAY_FIELDS = [
   "sectors",
@@ -78,6 +101,14 @@ const ELEMENTOR_FIELD_MAP: Record<string, string> = {
   phone: "phone",
   telephone: "phone",
   mobile: "phone",
+  alternative_email: "alternativeEmail",
+  alt_email: "alternativeEmail",
+  secondary_email: "alternativeEmail",
+  personal_email: "alternativeEmail",
+  date_of_birth: "dateOfBirth",
+  dob: "dateOfBirth",
+  birth_date: "dateOfBirth",
+  birthdate: "dateOfBirth",
   cv_url: "cvUrl",
   cvurl: "cvUrl",
   resume_url: "cvUrl",
@@ -90,8 +121,13 @@ const ELEMENTOR_FIELD_MAP: Record<string, string> = {
   primary_language: "language",
   website: "website",
   linkedin: "website",
+  profile_url: "website",
+  professional_website: "website",
   skype: "skype",
   gender: "gender",
+  gender_self_describe: "genderSelfDescribe",
+  self_described_gender: "genderSelfDescribe",
+  gender_detail: "genderSelfDescribe",
   highest_degree: "highestDegree",
   degree: "highestDegree",
   education: "highestDegree",
@@ -109,6 +145,34 @@ const TRUTHY_VALUES = ["true", "1", "yes", "on"]
 
 function normalizeKey(key: string): string {
   return key.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "")
+}
+
+function stripControlCharacters(value: string): string {
+  return value.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/g, "")
+}
+
+function sanitizeText(value: string, maxLength: number): string {
+  const cleaned = stripControlCharacters(value).trim()
+  return cleaned.length > maxLength ? cleaned.slice(0, maxLength) : cleaned
+}
+
+function getFieldLimit(field: string): number {
+  if (field === "bio") return MAX_BIO_LENGTH
+  if (URL_FIELDS.has(field)) return MAX_URL_LENGTH
+  return MAX_STRING_LENGTH
+}
+
+function sanitizeUrl(value: string): string | null {
+  const cleaned = stripControlCharacters(value).trim()
+  if (!cleaned) return null
+  const candidate = /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(cleaned) ? cleaned : `https://${cleaned}`
+  try {
+    const parsed = new URL(candidate)
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null
+    return candidate.length > MAX_URL_LENGTH ? candidate.slice(0, MAX_URL_LENGTH) : candidate
+  } catch {
+    return null
+  }
 }
 
 function buildConsultantFromElementor(
@@ -153,25 +217,39 @@ function getSecret(): string | null {
   return process.env.WEBHOOK_SECRET?.trim() || null
 }
 
-function verifySignature(rawBody: string, signature: string | null, secret: string): boolean {
-  if (!signature) return false
-  const expected = `sha256=${createHmac("sha256", secret).update(rawBody).digest("hex")}`
+function isFreshTimestamp(timestamp: string | null): boolean {
+  if (!timestamp) return true
+  const parsed = Number(timestamp)
+  if (!Number.isFinite(parsed)) return false
+  const timestampMs = parsed > 1e12 ? parsed : parsed * 1000
+  return Math.abs(Date.now() - timestampMs) <= TIMESTAMP_TOLERANCE_MS
+}
+
+function verifySignature(
+  rawBody: string,
+  signature: string | null,
+  secret: string,
+  timestamp: string | null
+): boolean {
+  if (!signature || signature.length > MAX_SIGNATURE_LENGTH) return false
+  const signedPayload = timestamp ? `${timestamp}.${rawBody}` : rawBody
+  const expected = `sha256=${createHmac("sha256", secret).update(signedPayload).digest("hex")}`
   const a = Buffer.from(signature)
   const b = Buffer.from(expected)
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
-function isAuthorized(request: Request, rawBody: string): { ok: boolean; error?: string } {
+function isAuthorized(request: Request, rawBody: string): boolean {
   const secret = getSecret()
-  if (!secret) {
-    return { ok: false, error: "Webhook is not configured. Set WEBHOOK_SECRET on the server." }
-  }
+  if (!secret) return false
+
+  const timestamp = request.headers.get("x-curatio-timestamp")
+  if (!isFreshTimestamp(timestamp)) return false
 
   const signature =
     request.headers.get("x-curatio-signature") || request.headers.get("x-webhook-signature")
-
-  if (signature && verifySignature(rawBody, signature, secret)) {
-    return { ok: true }
+  if (signature && verifySignature(rawBody, signature, secret, timestamp)) {
+    return true
   }
 
   const authHeader = request.headers.get("authorization") || ""
@@ -180,18 +258,27 @@ function isAuthorized(request: Request, rawBody: string): { ok: boolean; error?:
     const a = Buffer.from(bearer)
     const b = Buffer.from(secret)
     if (a.length === b.length && timingSafeEqual(a, b)) {
-      return { ok: true }
+      return true
     }
   }
 
-  return { ok: false, error: "Invalid webhook signature or token." }
+  return false
+}
+
+function buildFingerprint(rawBody: string, request: Request): string {
+  const credential =
+    request.headers.get("x-curatio-signature") ||
+    request.headers.get("x-webhook-signature") ||
+    (request.headers.get("authorization") || "").slice(0, MAX_SIGNATURE_LENGTH)
+  return createHash("sha256").update(rawBody).update("\n").update(credential).digest("hex")
 }
 
 function normalizeConsultant(raw: unknown): NormalizedConsultant | null {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null
   const input = raw as Record<string, unknown>
 
-  const email = typeof input.email === "string" ? input.email.toLowerCase().trim() : ""
+  const rawEmail = typeof input.email === "string" ? sanitizeText(input.email, MAX_EMAIL_LENGTH) : ""
+  const email = rawEmail.toLowerCase()
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return null
   }
@@ -200,30 +287,40 @@ function normalizeConsultant(raw: unknown): NormalizedConsultant | null {
 
   for (const field of STRING_FIELDS) {
     const value = input[field]
-    if (typeof value === "string" && value.trim() !== "") {
-      consultant[field] = value.trim()
+    if (typeof value !== "string") continue
+
+    if (URL_FIELDS.has(field)) {
+      const url = sanitizeUrl(value)
+      if (url) consultant[field] = url
+      continue
     }
+
+    const cleaned = sanitizeText(value, getFieldLimit(field))
+    if (cleaned !== "") consultant[field] = cleaned
   }
 
   for (const field of ARRAY_FIELDS) {
     const value = input[field]
-    if (Array.isArray(value)) {
-      consultant[field] = value
-        .filter((item): item is string => typeof item === "string")
-        .map((item) => item.trim())
-        .filter(Boolean)
-    } else if (typeof value === "string" && value.trim() !== "") {
-      consultant[field] = value
-        .split(",")
-        .map((item) => item.trim())
-        .filter(Boolean)
+    const items = Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === "string")
+      : typeof value === "string"
+        ? value.split(",")
+        : []
+
+    const cleaned = items
+      .map((item) => sanitizeText(item, MAX_ARRAY_ITEM_LENGTH))
+      .filter(Boolean)
+      .slice(0, MAX_ARRAY_ITEMS)
+
+    if (cleaned.length > 0) {
+      consultant[field] = cleaned
     }
   }
 
   if (input.years !== undefined && input.years !== null && input.years !== "") {
     const years = Number(input.years)
-    if (Number.isFinite(years) && years >= 0) {
-      consultant.years = years
+    if (Number.isFinite(years) && years >= 0 && years <= 120) {
+      consultant.years = Math.floor(years)
     }
   }
 
@@ -233,7 +330,11 @@ function normalizeConsultant(raw: unknown): NormalizedConsultant | null {
     }
   }
 
-  if (input.customAnswers !== null && typeof input.customAnswers === "object" && !Array.isArray(input.customAnswers)) {
+  if (
+    input.customAnswers !== null &&
+    typeof input.customAnswers === "object" &&
+    !Array.isArray(input.customAnswers)
+  ) {
     consultant.customAnswers = input.customAnswers
   }
 
@@ -284,39 +385,89 @@ function extractPayload(body: unknown): {
   return { entries, invalid: invalid.length }
 }
 
+function jsonResponse(body: unknown, init?: ResponseInit) {
+  const headers = new Headers(init?.headers)
+  headers.set("Cache-Control", "no-store")
+  headers.set("X-Content-Type-Options", "nosniff")
+  return NextResponse.json(body, { ...init, headers })
+}
+
+function rateLimitedResponse(retryAfterSeconds: number) {
+  return jsonResponse(
+    { error: "Too many requests. Please try again later." },
+    {
+      status: 429,
+      headers: { "Retry-After": String(retryAfterSeconds) },
+    }
+  )
+}
+
 export async function GET() {
-  const secret = getSecret()
-  return NextResponse.json({
+  return jsonResponse({
     ok: true,
     service: "curatio-consultants-webhook",
-    configured: Boolean(secret),
-    hint: "POST consultant profiles to this endpoint. Sign requests with HMAC-SHA256 using WEBHOOK_SECRET or pass Authorization: Bearer <WEBHOOK_SECRET>. Add \"createAccount\": true to a record to also create a Firebase Auth login and email a password setup link.",
+    configured: Boolean(getSecret()),
+    hint: "POST JSON consultant records signed with HMAC-SHA256 using WEBHOOK_SECRET (header x-curatio-signature, value sha256=<hex>) or Authorization: Bearer <WEBHOOK_SECRET>. Optionally bind the signature to a unix timestamp via x-curatio-timestamp (sign '<timestamp>.<body>'); requests older than 5 minutes are rejected. Max 1MB, 500 records per request, 10 account creations per request. Add \"createAccount\": true to also create a Firebase Auth login and email a password setup link.",
   })
 }
 
 export async function POST(request: Request) {
-  const rawBody = await request.text()
-
-  if (rawBody.length > MAX_BODY_SIZE) {
-    return NextResponse.json({ error: "Payload too large. Maximum size is 1MB." }, { status: 413 })
+  const ip = getClientIp(request.headers)
+  const perIpLimit = checkRateLimit(`webhook:ip:${ip}`, RATE_LIMIT_PER_IP, RATE_LIMIT_WINDOW_MS)
+  if (!perIpLimit.allowed) {
+    return rateLimitedResponse(perIpLimit.retryAfterSeconds)
   }
 
-  const auth = isAuthorized(request, rawBody)
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: 401 })
+  const globalLimit = checkRateLimit("webhook:global", RATE_LIMIT_GLOBAL, RATE_LIMIT_WINDOW_MS)
+  if (!globalLimit.allowed) {
+    return rateLimitedResponse(globalLimit.retryAfterSeconds)
+  }
+
+  const contentType = (request.headers.get("content-type") || "").split(";")[0].trim().toLowerCase()
+  if (contentType !== "application/json" && !contentType.endsWith("+json")) {
+    return jsonResponse({ error: "Unsupported content type. Send application/json." }, { status: 415 })
+  }
+
+  const declaredLength = Number(request.headers.get("content-length"))
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_BODY_SIZE) {
+    return jsonResponse({ error: "Payload too large. Maximum size is 1MB." }, { status: 413 })
+  }
+
+  const rawBody = await request.text()
+
+  if (Buffer.byteLength(rawBody, "utf8") > MAX_BODY_SIZE) {
+    return jsonResponse({ error: "Payload too large. Maximum size is 1MB." }, { status: 413 })
+  }
+
+  if (!isAuthorized(request, rawBody)) {
+    return jsonResponse({ error: "Unauthorized." }, { status: 401 })
+  }
+
+  const fingerprint = buildFingerprint(rawBody, request)
+  if (hasSeenRecently(fingerprint, REPLAY_WINDOW_MS)) {
+    return jsonResponse({
+      ok: true,
+      duplicate: true,
+      received: 0,
+      invalid: 0,
+      created: 0,
+      updated: 0,
+      accounts: [],
+      errors: [],
+    })
   }
 
   let body: unknown
   try {
     body = JSON.parse(rawBody)
   } catch {
-    return NextResponse.json({ error: "Request body must be valid JSON." }, { status: 400 })
+    return jsonResponse({ error: "Request body must be valid JSON." }, { status: 400 })
   }
 
   const { entries, invalid } = extractPayload(body)
 
   if (entries.length === 0) {
-    return NextResponse.json(
+    return jsonResponse(
       {
         ok: false,
         error:
@@ -325,6 +476,35 @@ export async function POST(request: Request) {
       },
       { status: 400 }
     )
+  }
+
+  if (entries.length > MAX_ENTRIES_PER_REQUEST) {
+    return jsonResponse(
+      { error: `Too many records. Maximum is ${MAX_ENTRIES_PER_REQUEST} per request.` },
+      { status: 400 }
+    )
+  }
+
+  const accountEntries = entries.filter((e) => e.createAccount)
+  const plainEntries = entries.filter((e) => !e.createAccount)
+
+  if (accountEntries.length > MAX_ACCOUNT_ENTRIES_PER_REQUEST) {
+    return jsonResponse(
+      { error: `Too many account creations. Maximum is ${MAX_ACCOUNT_ENTRIES_PER_REQUEST} per request.` },
+      { status: 400 }
+    )
+  }
+
+  if (accountEntries.length > 0) {
+    const accountLimit = checkRateLimit(
+      "webhook:account-creation",
+      ACCOUNT_CREATION_LIMIT,
+      ACCOUNT_CREATION_WINDOW_MS,
+      accountEntries.length
+    )
+    if (!accountLimit.allowed) {
+      return rateLimitedResponse(accountLimit.retryAfterSeconds)
+    }
   }
 
   let created = 0
@@ -338,8 +518,6 @@ export async function POST(request: Request) {
   }[] = []
 
   const continueUrl = `${new URL(request.url).origin}/login`
-  const accountEntries = entries.filter((e) => e.createAccount)
-  const plainEntries = entries.filter((e) => !e.createAccount)
 
   // --- Account-backed registration (createAccount: true) ---
   for (const { consultant } of accountEntries) {
@@ -484,7 +662,9 @@ export async function POST(request: Request) {
     // Logging is best-effort; do not fail the request because of it.
   }
 
-  return NextResponse.json({
+  rememberRequest(fingerprint, REPLAY_WINDOW_MS)
+
+  return jsonResponse({
     ok: true,
     received: entries.length + invalid,
     invalid,

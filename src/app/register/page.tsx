@@ -18,6 +18,9 @@ import { getFunctions, httpsCallable } from "firebase/functions"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
+import { DatePicker } from "@/components/ui/date-picker"
+import { COUNTRIES } from "@/lib/countries"
+import { GENDER_OPTIONS, GENDER_SELF_DESCRIBE, getMissingPersonalFields } from "@/lib/consultant-fields"
 import { Eye, EyeOff } from "lucide-react"
 
 export default function RegisterPage() {
@@ -33,6 +36,15 @@ export default function RegisterPage() {
   const [lastName, setLastName] = useState("")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+  const [gender, setGender] = useState("")
+  const [genderSelfDescribe, setGenderSelfDescribe] = useState("")
+  const [dateOfBirth, setDateOfBirth] = useState("")
+  const [country, setCountry] = useState("")
+  const [state, setState] = useState("")
+  const [city, setCity] = useState("")
+  const [phone, setPhone] = useState("")
+  const [alternativeEmail, setAlternativeEmail] = useState("")
+  const [website, setWebsite] = useState("")
   const [customAnswers, setCustomAnswers] = useState<Record<string, any>>({})
   const [showPassword, setShowPassword] = useState(false)
   const [registrationEnabled, setRegistrationEnabled] = useState<boolean | null>(null)
@@ -121,6 +133,25 @@ export default function RegisterPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    const missingFields = getMissingPersonalFields({
+      firstName,
+      lastName,
+      gender,
+      genderSelfDescribe,
+      dateOfBirth,
+      country,
+    })
+
+    if (missingFields.length > 0) {
+      toast({
+        title: "Missing required fields",
+        description: `Please complete: ${missingFields.join(", ")}.`,
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsLoading(true)
     
     try {
@@ -142,8 +173,17 @@ export default function RegisterPage() {
           email: userCredential.user.email,
           role: "consultant" as const,
           displayName: `${firstName} ${lastName}`.trim(),
-          firstName,
-          lastName,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          gender,
+          genderSelfDescribe: gender === GENDER_SELF_DESCRIBE ? genderSelfDescribe.trim() : "",
+          dateOfBirth,
+          country,
+          state: state.trim(),
+          city: city.trim(),
+          phone: phone.trim(),
+          alternativeEmail: alternativeEmail.trim(),
+          website: website.trim(),
           createdAt: new Date().toISOString(),
           customAnswers
         }
@@ -286,6 +326,123 @@ export default function RegisterPage() {
                         <Eye className="h-4 w-4" />
                       )}
                     </button>
+                  </div>
+                </div>
+
+                {/* Personal Information */}
+                <div className="space-y-4 pt-4 border-t mt-6">
+                  <h3 className="text-sm font-semibold">Personal Information</h3>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="gender">
+                        Gender <span className="text-destructive">*</span>
+                      </Label>
+                      <Select value={gender} onValueChange={setGender}>
+                        <SelectTrigger id="gender">
+                          <SelectValue placeholder="Select gender" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {GENDER_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {gender === GENDER_SELF_DESCRIBE && (
+                        <Input
+                          placeholder="Please specify"
+                          value={genderSelfDescribe}
+                          onChange={(e) => setGenderSelfDescribe(e.target.value)}
+                        />
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="dateOfBirth">
+                        Date of Birth <span className="text-destructive">*</span>
+                      </Label>
+                      <DatePicker
+                        id="dateOfBirth"
+                        value={dateOfBirth}
+                        onChange={setDateOfBirth}
+                        placeholder="Select date of birth"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="country">
+                        Country of Residence <span className="text-destructive">*</span>
+                      </Label>
+                      <Select value={country} onValueChange={setCountry}>
+                        <SelectTrigger id="country">
+                          <SelectValue placeholder="Select country" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {COUNTRIES.map((c) => (
+                            <SelectItem key={c.value} value={c.value}>
+                              {c.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="state">State / Province / Region</Label>
+                      <Input
+                        id="state"
+                        placeholder="e.g. California"
+                        value={state}
+                        onChange={(e) => setState(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="city">City / Town</Label>
+                      <Input
+                        id="city"
+                        placeholder="e.g. San Francisco"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Phone Number</Label>
+                      <Input
+                        id="phone"
+                        type="tel"
+                        placeholder="+1 234 567 890"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="alternativeEmail">Alternative Email</Label>
+                      <Input
+                        id="alternativeEmail"
+                        type="email"
+                        placeholder="alternative@example.com"
+                        value={alternativeEmail}
+                        onChange={(e) => setAlternativeEmail(e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="website">Professional Website or Profile</Label>
+                      <Input
+                        id="website"
+                        type="url"
+                        placeholder="https://linkedin.com/in/username"
+                        value={website}
+                        onChange={(e) => setWebsite(e.target.value)}
+                      />
+                    </div>
                   </div>
                 </div>
 

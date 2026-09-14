@@ -97,6 +97,9 @@ export type Consultant = {
   otherLanguages?: string[];
   bio: string;
   gender?: string;
+  genderSelfDescribe?: string;
+  dateOfBirth?: string;
+  alternativeEmail?: string;
   highestDegree?: string;
   completionYear?: string;
   website?: string;

@@ -25,6 +25,9 @@ export interface UserProfile {
   cvUrl?: string;
   avatarUrl?: string;
   gender?: string;
+  genderSelfDescribe?: string;
+  dateOfBirth?: string;
+  alternativeEmail?: string;
   highestDegree?: string;
   completionYear?: string;
   nativeLanguage?: string;
