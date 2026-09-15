@@ -95,6 +95,7 @@ src/
 │   │   ├── opportunities/             # CRUD, applicants pipeline, AI matchmaking
 │   │   └── profile/                   # Profile management
 │   ├── public/opportunities/[id]/     # Public project page + apply flow
+│   ├── embed/register/                # Embeddable registration form (iframe, auto-resizing)
 │   └── api/
 │       ├── email/route.ts             # Resend dispatch (admin-verified)
 │       └── webhooks/consultants/route.ts  # Signed directory ingestion webhook
@@ -132,7 +133,7 @@ tests/                                 # Playwright smoke tests
    ├─ status: pending | verified | rejected
    ├─ aiInsight: { summary, skills, experienceHighlights, qualifications }
    ├─ customAnswers: { [fieldId]: value }
-   └─ source: "webhook" | "registration"
+   └─ source: "webhook" | "registration" | "embed"
 /opportunities/{opportunityId}          # Opportunity (status: open | closed | draft)
    ├─ title, location, region, duration, deadline, tags, description/content
    ├─ formSchema: [ { id, label, type, required, options, isSystem } ]
@@ -174,6 +175,12 @@ Self-registration cannot mint admins. The invite flow is:
 - `/api/email` requires a valid Firebase ID token whose user resolves to an admin (`isAdminUser`).
 - `/api/webhooks/consultants` requires either an HMAC-SHA256 signature (`X-Curatio-Signature: sha256=<hex>`) computed over the raw body with `WEBHOOK_SECRET`, or `Authorization: Bearer <WEBHOOK_SECRET>`. Comparisons are constant-time and the endpoint rejects all requests (401) when `WEBHOOK_SECRET` is unset.
 - Secrets and keys live in environment variables only; never in the repository or client bundle.
+
+### 6.4 Embeddable Registration Form
+
+- `/embed/register` is the only surface that may be framed: `next.config.ts` drops `X-Frame-Options` for `/embed/*` and serves a CSP whose `frame-ancestors` is driven by `EMBED_ALLOWED_ORIGINS` (defaults to `*` — the form is public). Every other route keeps `X-Frame-Options: DENY` and `frame-ancestors 'none'`.
+- The form performs the same full registration as `/register` (Auth user + `consultantRoles` + `consultantProfiles` with `status: "pending"`, `source: "embed"`), then posts `curatio-embed:success` to the host page.
+- Host pages embed it with the snippet generated in **Admin → Website Embed**; the iframe reports its height via `postMessage` (`curatio-embed:ready` / `curatio-embed:resize`) so the host auto-sizes it, and accepts an optional `curatio-embed:theme` message or `?theme=dark` query parameter. No sensitive data is ever posted to the host page.
 
 ---
 
@@ -257,6 +264,7 @@ Dev tooling: `npm run genkit:dev` / `genkit:watch` boot the Genkit Developer UI 
 | `GEMINI_API_KEY` | Genkit flows |
 | `RESEND_API_KEY`, `RESEND_FROM_EMAIL` | Email dispatch |
 | `WEBHOOK_SECRET` | Directory webhook signing |
+| `EMBED_ALLOWED_ORIGINS` | Comma-separated origins allowed to frame `/embed/*` (default `*`) |
 | `FIREBASE_SERVICE_ACCOUNT_KEY` | Admin SDK credentials for local dev (optional on App Hosting — ADC is automatic) |
 
 ### Operational notes

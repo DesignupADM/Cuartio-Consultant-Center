@@ -35,6 +35,7 @@ export interface UserProfile {
   website?: string;
   skype?: string;
   status?: string;
+  source?: "webhook" | "registration" | "embed";
   step?: string;
   registrationDate?: string;
   language?: string;

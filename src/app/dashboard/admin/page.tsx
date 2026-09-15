@@ -28,7 +28,10 @@ import {
   ChevronDownSquare,
   X,
   Mail,
-  RotateCcw
+  RotateCcw,
+  Code2,
+  Copy,
+  ExternalLink
 } from "lucide-react"
 import { useFirestore, useCollection, useDoc, useFirebaseApp, useAuth } from "@/firebase"
 import { collection, query, where, doc, setDoc, updateDoc, deleteDoc, addDoc, orderBy, runTransaction, serverTimestamp } from "firebase/firestore"
@@ -43,6 +46,7 @@ import { errorEmitter } from "@/firebase/error-emitter"
 import { FirestorePermissionError } from "@/firebase/errors"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
+import { buildEmbedSnippet } from "@/lib/embed"
 
 export default function AdminPanelPage() {
   const { toast } = useToast()
@@ -51,6 +55,7 @@ export default function AdminPanelPage() {
   const functions = getFunctions(useFirebaseApp())
   const [isSaving, setIsSaving] = useState(false)
   const [newQuestionType, setNewQuestionType] = useState<"text" | "textarea" | "select">("text")
+  const [embedSnippet, setEmbedSnippet] = useState("")
 
   const [isAdminDialogOpen, setIsAdminDialogOpen] = useState(false)
   const [editingAdmin, setEditingAdmin] = useState<any>(null)
@@ -86,6 +91,26 @@ export default function AdminPanelPage() {
       },
     })
   }, [settings])
+
+  useEffect(() => {
+    setEmbedSnippet(buildEmbedSnippet(window.location.origin))
+  }, [])
+
+  const handleCopyEmbedSnippet = async () => {
+    try {
+      await navigator.clipboard.writeText(embedSnippet || buildEmbedSnippet(window.location.origin))
+      toast({
+        title: "Embed code copied",
+        description: "Paste it into the foundation website's HTML to publish the form.",
+      })
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Copy failed",
+        description: "Select the code manually and copy it.",
+      })
+    }
+  }
 
   const logSettingsChange = (changedKeys: string[]) => {
     const actor = auth.currentUser?.email || auth.currentUser?.uid || "unknown"
@@ -409,9 +434,10 @@ export default function AdminPanelPage() {
         </div>
 
         <Tabs defaultValue="general" className="w-full">
-          <TabsList className="grid w-full grid-cols-5 mb-8">
+          <TabsList className="grid w-full grid-cols-2 gap-1 sm:grid-cols-3 lg:grid-cols-6 mb-8">
             <TabsTrigger value="general">System Settings</TabsTrigger>
             <TabsTrigger value="form">Registration Builder</TabsTrigger>
+            <TabsTrigger value="embed">Website Embed</TabsTrigger>
             <TabsTrigger value="opps">Project Fields</TabsTrigger>
             <TabsTrigger value="emails">Email Templates</TabsTrigger>
             <TabsTrigger value="users">Admin Accounts</TabsTrigger>
@@ -673,6 +699,75 @@ export default function AdminPanelPage() {
                         </div>
                       ))
                     )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="embed" className="space-y-6">
+            <div className="grid gap-6 lg:grid-cols-2">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Code2 className="h-5 w-5 text-primary" />
+                    Embed Registration Form
+                  </CardTitle>
+                  <CardDescription>
+                    Paste this snippet into any page of the foundation website (a WordPress
+                    &quot;Custom HTML&quot; block works well). Submissions land in the consultant
+                    directory instantly.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={handleCopyEmbedSnippet}>
+                      <Copy className="mr-2 h-4 w-4" /> Copy Embed Code
+                    </Button>
+                    <Button variant="outline" asChild>
+                      <a href="/embed/register" target="_blank" rel="noopener noreferrer">
+                        <ExternalLink className="mr-2 h-4 w-4" /> Open Form
+                      </a>
+                    </Button>
+                  </div>
+                  <pre className="max-h-80 overflow-auto rounded-lg border bg-muted/40 p-4 text-[11px] leading-relaxed">
+                    <code>{embedSnippet || "Loading embed code..."}</code>
+                  </pre>
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    <p>
+                      The included script keeps the iframe height in sync automatically — no
+                      scrollbars.
+                    </p>
+                    <p>
+                      For a dark website, add{" "}
+                      <code className="rounded bg-muted px-1 py-0.5">?theme=dark</code> to the iframe{" "}
+                      <code className="rounded bg-muted px-1 py-0.5">src</code>.
+                    </p>
+                    <p>
+                      The form respects your system settings: registration toggles, allowed email
+                      domains, and custom questions all apply.
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ExternalLink className="h-5 w-5 text-primary" />
+                    Live Preview
+                  </CardTitle>
+                  <CardDescription>
+                    Exactly what visitors see. Submissions are disabled in preview mode.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-hidden rounded-lg border bg-muted/20">
+                    <iframe
+                      src="/embed/register?preview=1"
+                      title="Embedded registration form preview"
+                      className="block h-[760px] w-full border-0"
+                    />
                   </div>
                 </CardContent>
               </Card>
