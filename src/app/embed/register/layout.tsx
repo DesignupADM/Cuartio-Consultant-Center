@@ -12,12 +12,13 @@ export default function EmbedRegisterLayout({ children }: { children: React.Reac
       <script
         dangerouslySetInnerHTML={{
           __html:
-            '(function(){try{var t=new URLSearchParams(window.location.search).get("theme")||"light";if(t!=="auto"){document.documentElement.classList.toggle("dark",t==="dark")}}catch(e){}})()',
+            '(function(){try{var t=new URLSearchParams(window.location.search).get("theme")||"light";if(t!=="auto"){var r=document.documentElement;r.classList.toggle("dark",t==="dark");r.style.colorScheme=t==="dark"?"dark":"light"}}catch(e){}})()',
         }}
       />
       <style>{`
         html, body { background: transparent !important; }
-        html { overflow-x: hidden; }
+        html { overflow-x: hidden; color-scheme: light !important; }
+        html.dark { color-scheme: dark !important; }
       `}</style>
       {children}
     </>

@@ -36,6 +36,7 @@ test.describe('Embeddable registration form', () => {
       page.getByRole('heading', { name: 'Create your consultant account' })
     ).toBeVisible({ timeout: 20000 });
     await expect(page.locator('html')).not.toHaveClass(/dark/);
+    await expect(page.locator('html')).toHaveCSS('color-scheme', 'light');
     await expect(page.locator('[data-embed-align]')).toHaveAttribute('data-embed-align', 'left');
     await expect(page.locator('[data-embed-align]')).toHaveClass(/mr-auto/);
   });
@@ -54,6 +55,7 @@ test.describe('Embeddable registration form', () => {
     await page.goto('/embed/register?theme=dark');
 
     await expect(page.locator('html')).toHaveClass(/dark/, { timeout: 20000 });
+    await expect(page.locator('html')).toHaveCSS('color-scheme', 'dark');
   });
 
   test('preview mode disables submissions', async ({ page }) => {

@@ -268,6 +268,10 @@ export default function EmbedRegisterPage() {
       if (root.classList.contains("dark") !== wantsDark) {
         root.classList.toggle("dark", wantsDark)
       }
+      const scheme = wantsDark ? "dark" : "light"
+      if (root.style.colorScheme !== scheme) {
+        root.style.colorScheme = scheme
+      }
     }
     apply()
     const observer = new MutationObserver(apply)
