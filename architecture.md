@@ -180,7 +180,7 @@ Self-registration cannot mint admins. The invite flow is:
 
 - `/embed/register` is the only surface that may be framed: `next.config.ts` drops `X-Frame-Options` for `/embed/*` and serves a CSP whose `frame-ancestors` is driven by `EMBED_ALLOWED_ORIGINS` (defaults to `*` — the form is public). Every other route keeps `X-Frame-Options: DENY` and `frame-ancestors 'none'`.
 - The form performs the same full registration as `/register` (Auth user + `consultantRoles` + `consultantProfiles` with `status: "pending"`, `source: "embed"`), then posts `curatio-embed:success` to the host page.
-- Host pages embed it with the snippet generated in **Admin → Website Embed**; the iframe reports its height via `postMessage` (`curatio-embed:ready` / `curatio-embed:resize`) so the host auto-sizes it, and accepts an optional `curatio-embed:theme` message or `?theme=dark` query parameter. No sensitive data is ever posted to the host page.
+- Host pages embed it with the snippet generated in **Admin → Website Embed**, where the theme (light/dark/auto, default light) and alignment (left/center/right, default left) are chosen before copying. The iframe reports its height via `postMessage` (`curatio-embed:ready` / `curatio-embed:resize`) so the host auto-sizes it, and accepts an optional `curatio-embed:theme` message or `?theme=` / `?align=` query parameters. No sensitive data is ever posted to the host page.
 
 ---
 

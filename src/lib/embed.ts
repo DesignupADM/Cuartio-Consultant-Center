@@ -2,6 +2,8 @@ export const EMBED_ROUTE = "/embed/register"
 
 export type EmbedTheme = "light" | "dark" | "auto"
 
+export type EmbedAlign = "left" | "center" | "right"
+
 export const EMBED_EVENTS = {
   ready: "curatio-embed:ready",
   resize: "curatio-embed:resize",
@@ -38,16 +40,23 @@ export function parseEmbedTheme(value: unknown): EmbedTheme | null {
   return value === "light" || value === "dark" || value === "auto" ? value : null
 }
 
+export function parseEmbedAlign(value: unknown): EmbedAlign | null {
+  return value === "left" || value === "center" || value === "right" ? value : null
+}
+
 export interface EmbedSnippetOptions {
   theme?: EmbedTheme
+  align?: EmbedAlign
   height?: number
 }
 
 export function buildEmbedSnippet(appOrigin: string, options: EmbedSnippetOptions = {}): string {
   const origin = appOrigin.replace(/\/+$/, "")
-  const theme = options.theme && options.theme !== "auto" ? `?theme=${options.theme}` : ""
+  const params = new URLSearchParams()
+  params.set("theme", options.theme ?? "light")
+  params.set("align", options.align ?? "left")
   const fallbackHeight = options.height ?? 1180
-  const src = `${origin}${EMBED_ROUTE}${theme}`
+  const src = `${origin}${EMBED_ROUTE}?${params.toString()}`
 
   return `<!-- Curatio consultant registration form. Paste into any HTML page or CMS block (e.g. WordPress "Custom HTML"). -->
 <iframe

@@ -28,6 +28,34 @@ test.describe('Embeddable registration form', () => {
     ).toBeVisible({ timeout: 20000 });
   });
 
+  test('defaults to the light theme and left alignment', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'dark' });
+    await page.goto('/embed/register');
+
+    await expect(
+      page.getByRole('heading', { name: 'Create your consultant account' })
+    ).toBeVisible({ timeout: 20000 });
+    await expect(page.locator('html')).not.toHaveClass(/dark/);
+    await expect(page.locator('[data-embed-align]')).toHaveAttribute('data-embed-align', 'left');
+    await expect(page.locator('[data-embed-align]')).toHaveClass(/mr-auto/);
+  });
+
+  test('honors the align query parameter', async ({ page }) => {
+    await page.goto('/embed/register?align=center');
+
+    await expect(
+      page.getByRole('heading', { name: 'Create your consultant account' })
+    ).toBeVisible({ timeout: 20000 });
+    await expect(page.locator('[data-embed-align]')).toHaveAttribute('data-embed-align', 'center');
+    await expect(page.locator('[data-embed-align]')).toHaveClass(/mx-auto/);
+  });
+
+  test('honors the dark theme query parameter', async ({ page }) => {
+    await page.goto('/embed/register?theme=dark');
+
+    await expect(page.locator('html')).toHaveClass(/dark/, { timeout: 20000 });
+  });
+
   test('preview mode disables submissions', async ({ page }) => {
     await page.goto('/embed/register?preview=1');
 

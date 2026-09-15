@@ -9,6 +9,12 @@ export const metadata: Metadata = {
 export default function EmbedRegisterLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
+      <script
+        dangerouslySetInnerHTML={{
+          __html:
+            '(function(){try{var t=new URLSearchParams(window.location.search).get("theme")||"light";if(t!=="auto"){document.documentElement.classList.toggle("dark",t==="dark")}}catch(e){}})()',
+        }}
+      />
       <style>{`
         html, body { background: transparent !important; }
         html { overflow-x: hidden; }

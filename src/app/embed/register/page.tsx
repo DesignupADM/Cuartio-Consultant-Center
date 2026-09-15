@@ -21,7 +21,14 @@ import { useAuth, useCollection, useFirestore } from "@/firebase"
 import { createUserProfile, type UserProfile } from "@/firebase/firestore/users"
 import { COUNTRIES } from "@/lib/countries"
 import { GENDER_OPTIONS, GENDER_SELF_DESCRIBE } from "@/lib/consultant-fields"
-import { EMBED_EVENTS, parseEmbedTheme, postToHost, type EmbedTheme } from "@/lib/embed"
+import {
+  EMBED_EVENTS,
+  parseEmbedAlign,
+  parseEmbedTheme,
+  postToHost,
+  type EmbedAlign,
+  type EmbedTheme,
+} from "@/lib/embed"
 import { DEFAULT_SETTINGS, isEmailDomainAllowed, resolveSettings, type SystemSettings } from "@/lib/settings"
 
 const formSchema = z
@@ -185,7 +192,8 @@ export default function EmbedRegisterPage() {
   const submittingRef = useRef(false)
 
   const [settings, setSettings] = useState<SystemSettings | null>(null)
-  const [theme, setTheme] = useState<EmbedTheme>("auto")
+  const [theme, setTheme] = useState<EmbedTheme>("light")
+  const [align, setAlign] = useState<EmbedAlign>("left")
   const [preview, setPreview] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [answers, setAnswers] = useState<Record<string, string>>({})
@@ -235,7 +243,8 @@ export default function EmbedRegisterPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     setPreview(params.get("preview") === "1")
-    setTheme(parseEmbedTheme(params.get("theme")) ?? "auto")
+    setTheme(parseEmbedTheme(params.get("theme")) ?? "light")
+    setAlign(parseEmbedAlign(params.get("align")) ?? "left")
     postToHost({ type: EMBED_EVENTS.ready })
   }, [])
 
@@ -401,8 +410,15 @@ export default function EmbedRegisterPage() {
     window.open(path, "_blank", "noopener,noreferrer")
   }
 
+  const alignmentClass =
+    align === "center" ? "mx-auto" : align === "right" ? "ml-auto mr-0" : "ml-0 mr-auto"
+
   return (
-    <div ref={rootRef} className="mx-auto w-full max-w-2xl px-3 py-4 sm:px-4">
+    <div
+      ref={rootRef}
+      data-embed-align={align}
+      className={`w-full max-w-2xl px-3 py-4 sm:px-4 ${alignmentClass}`}
+    >
       <Card className="overflow-hidden border shadow-sm">
         {preview ? (
           <div className="border-b border-dashed bg-muted/50 px-4 py-2.5 text-[11px] leading-relaxed text-muted-foreground">

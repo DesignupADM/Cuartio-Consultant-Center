@@ -46,7 +46,7 @@ import { errorEmitter } from "@/firebase/error-emitter"
 import { FirestorePermissionError } from "@/firebase/errors"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { buildEmbedSnippet } from "@/lib/embed"
+import { buildEmbedSnippet, type EmbedAlign, type EmbedTheme } from "@/lib/embed"
 
 export default function AdminPanelPage() {
   const { toast } = useToast()
@@ -55,7 +55,9 @@ export default function AdminPanelPage() {
   const functions = getFunctions(useFirebaseApp())
   const [isSaving, setIsSaving] = useState(false)
   const [newQuestionType, setNewQuestionType] = useState<"text" | "textarea" | "select">("text")
-  const [embedSnippet, setEmbedSnippet] = useState("")
+  const [embedOrigin, setEmbedOrigin] = useState("")
+  const [embedTheme, setEmbedTheme] = useState<EmbedTheme>("light")
+  const [embedAlign, setEmbedAlign] = useState<EmbedAlign>("left")
 
   const [isAdminDialogOpen, setIsAdminDialogOpen] = useState(false)
   const [editingAdmin, setEditingAdmin] = useState<any>(null)
@@ -93,12 +95,22 @@ export default function AdminPanelPage() {
   }, [settings])
 
   useEffect(() => {
-    setEmbedSnippet(buildEmbedSnippet(window.location.origin))
+    setEmbedOrigin(window.location.origin)
   }, [])
+
+  const embedSnippet = useMemo(
+    () =>
+      embedOrigin
+        ? buildEmbedSnippet(embedOrigin, { theme: embedTheme, align: embedAlign })
+        : "",
+    [embedOrigin, embedTheme, embedAlign]
+  )
 
   const handleCopyEmbedSnippet = async () => {
     try {
-      await navigator.clipboard.writeText(embedSnippet || buildEmbedSnippet(window.location.origin))
+      await navigator.clipboard.writeText(
+        buildEmbedSnippet(window.location.origin, { theme: embedTheme, align: embedAlign })
+      )
       toast({
         title: "Embed code copied",
         description: "Paste it into the foundation website's HTML to publish the form.",
@@ -730,18 +742,45 @@ export default function AdminPanelPage() {
                       </a>
                     </Button>
                   </div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="embed-theme">Color Theme</Label>
+                      <Select value={embedTheme} onValueChange={(value: any) => setEmbedTheme(value)}>
+                        <SelectTrigger id="embed-theme">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="light">Light (default)</SelectItem>
+                          <SelectItem value="dark">Dark</SelectItem>
+                          <SelectItem value="auto">Match visitor&apos;s system</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="embed-align">Alignment</Label>
+                      <Select value={embedAlign} onValueChange={(value: any) => setEmbedAlign(value)}>
+                        <SelectTrigger id="embed-align">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="left">Left (default)</SelectItem>
+                          <SelectItem value="center">Center</SelectItem>
+                          <SelectItem value="right">Right</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                   <pre className="max-h-80 overflow-auto rounded-lg border bg-muted/40 p-4 text-[11px] leading-relaxed">
                     <code>{embedSnippet || "Loading embed code..."}</code>
                   </pre>
                   <div className="space-y-1 text-xs text-muted-foreground">
                     <p>
-                      The included script keeps the iframe height in sync automatically — no
-                      scrollbars.
+                      The code above already carries your theme and alignment — the copy button always
+                      copies the current selection.
                     </p>
                     <p>
-                      For a dark website, add{" "}
-                      <code className="rounded bg-muted px-1 py-0.5">?theme=dark</code> to the iframe{" "}
-                      <code className="rounded bg-muted px-1 py-0.5">src</code>.
+                      The included script keeps the iframe height in sync automatically — no
+                      scrollbars.
                     </p>
                     <p>
                       The form respects your system settings: registration toggles, allowed email
@@ -764,7 +803,8 @@ export default function AdminPanelPage() {
                 <CardContent>
                   <div className="overflow-hidden rounded-lg border bg-muted/20">
                     <iframe
-                      src="/embed/register?preview=1"
+                      key={`${embedTheme}-${embedAlign}`}
+                      src={`/embed/register?preview=1&theme=${embedTheme}&align=${embedAlign}`}
                       title="Embedded registration form preview"
                       className="block h-[760px] w-full border-0"
                     />
